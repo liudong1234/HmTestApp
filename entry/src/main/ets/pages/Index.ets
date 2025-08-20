@@ -1,19 +1,47 @@
 import { BusinessError } from '@kit.BasicServicesKit';
 
+@Builder
+function overBuilderValue(params: string) {
+  Row() {
+    Text(`text: ${params}`)
+      .fontSize(30)
+  }
+}
+class Tmp
+{
+  text: string = '';
+}
+class Tmp2
+{
+  age: number = 0;
+}
+
+@Builder
+function overBuilderRef(params: Tmp, params2: Tmp2) {
+  Row() {
+    Text(`${params.text} ${params2.age}`)
+      .fontSize(30)
+  }
+}
+
 // 应用/服务包含的页面
 @Entry
 @Component
 struct Index {
   @State message: string = "hello world";
-
+  @State age: number = 100;
   build() {
     Row() {
       Column() {
-        Text(this.message)
-          .fontSize(60)
-          .fontWeight(FontWeight.Bolder)
+        overBuilderValue(this.message);
+        Divider()
+        overBuilderRef({text: this.message}, {age: this.age})//两个参数的情况下，状态不变
         Image("https://th.bing.com/th/id/R.a40465e4923e78a6f6ff5decae12dbe4?rik=yMGkFld4EQIzBg&riu=http%3a%2f%2fpic.baike.soso.com%2fp%2f20140221%2f20140221010641-487941928.jpg&ehk=u%2flM4BrrMchlrRGQx3U1Y9BhaHiZ5lpx91Hp2PIyTeo%3d&risl=&pid=ImgRaw&r=0")
           .height(100)
+          .onClick(() => {
+            this.message = "leaf";
+            this.age = 10000;
+          })
         Divider()
         Button() {
           Text('Next')

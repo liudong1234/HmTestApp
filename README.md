@@ -157,3 +157,301 @@ ArkUI通过**@Builder**装饰器为开发者提供代码精简解决方案，该
 
 ###### @Builder装饰器：自定义构建函数
 
+1. 局部函数
+2. 全局函数
+
+有两种参数传递方式：
+
+1. 按值传递参数
+
+```typescript
+@Builder function overBuilder(paramA1: string) {
+  Row() {
+    Text(`UseStateVarByValue: ${paramA1} `)
+  }
+}
+@Entry
+@Component
+struct Parent {
+  @State label: string = 'Hello';
+  build() {
+    Column() {
+      overBuilder(this.label)
+    }
+  }
+}
+```
+
+2. 按引用传递
+
+```typescript
+class Tmp {
+  paramA1: string = '';
+}
+
+@Builder
+function overBuilder(params: Tmp) {
+  Row() {
+    Text(`UseStateVarByReference: ${params.paramA1} `)
+  }
+}
+
+@Entry
+@Component
+struct Parent {
+  @State label: string = 'Hello';
+
+  build() {
+    Column() {
+      // 在父组件中调用overBuilder组件时，
+      // 把this.label通过引用传递的方式传给overBuilder组件。
+      overBuilder({ paramA1: this.label })
+      Button('Click me').onClick(() => {
+        // 单击Click me后，UI文本从Hello更改为ArkUI。
+        this.label = 'ArkUI';
+      })
+    }
+  }
+}
+```
+
+@Builder按引用传递且仅传入一个参数时，才会触发动态渲染UI
+
+当通过引用传递方式向@Builder传递参数时，若参数为@Local装饰的对象，对该对象进行整体赋值会触发@Builder中UI刷新。
+
+@Builder支持状态变量刷新：通过使用UIUtils.makeBinding()函数、Binding类和MutableBinding类实现@Builder函数中状态变量的刷新
+
+```typescript
+import { Binding, MutableBinding, UIUtils } from '@kit.ArkUI';
+
+@ObservedV2
+class ClassA {
+  @Trace props: string = 'Hello';
+}
+
+@Builder
+function CustomButton(num1: Binding<number>, num2: MutableBinding<number>) {
+  Row() {
+    Column() {
+      Text(`number1 === ${num1.value},  number2 === ${num2.value}`)
+        .width(300)
+        .height(40)
+        .margin(10)
+        .backgroundColor('#0d000000')
+        .fontColor('#e6000000')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+
+      Button(`only change number2`)
+        .onClick(() => {
+          num2.value += 1;
+        })
+    }
+  }
+}
+
+@Builder
+function CustomButtonObj(obj1: MutableBinding<ClassA>) {
+  Row() {
+    Column() {
+      Text(`props === ${obj1.value.props}`)
+        .width(300)
+        .height(40)
+        .margin(10)
+        .backgroundColor('#0d000000')
+        .fontColor('#e6000000')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+
+      Button(`change props`)
+        .onClick(() => {
+          obj1.value.props += 'Hi';
+        })
+    }
+  }
+}
+
+@Entry
+@ComponentV2
+struct Single {
+  @Local number1: number = 5;
+  @Local number2: number = 12;
+  @Local classA: ClassA = new ClassA();
+
+  build() {
+    Column() {
+      Button(`change both number1 and number2`)
+        .onClick(() => {
+          this.number1 += 1;
+          this.number2 += 2;
+        })
+      Text(`number1 === ${this.number1}`)
+        .width(300)
+        .height(40)
+        .margin(10)
+        .backgroundColor('#0d000000')
+        .fontColor('#e6000000')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+      Text(`number2 === ${this.number2}`)
+        .width(300)
+        .height(40)
+        .margin(10)
+        .backgroundColor('#0d000000')
+        .fontColor('#e6000000')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+      CustomButton(
+        UIUtils.makeBinding<number>(() => this.number1),
+        UIUtils.makeBinding<number>(
+          () => this.number2,
+          (val: number) => {
+            this.number2 = val;
+          })
+      )
+      Text(`classA.props === ${this.classA.props}`)
+        .width(300)
+        .height(40)
+        .margin(10)
+        .backgroundColor('#0d000000')
+        .fontColor('#e6000000')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+      CustomButtonObj(
+        UIUtils.makeBinding<ClassA>(
+          () => this.classA,
+          (val: ClassA) => {
+            this.classA = val;
+          })
+      )
+    }
+    .width('100%')
+    .height('100%')
+    .alignItems(HorizontalAlign.Center)
+    .justifyContent(FlexAlign.Center)
+  }
+}
+```
+
+使用@ComponentV2装饰器触发动态刷新
+
+在@ComponentV2装饰器装饰的自定义组件中配合@ObservedV2和@Trace装饰器，通过按值传递的方式可以实现UI刷新功能。
+
+### 在@Builder内创建自定义组件传递参数不刷新问题
+
+在parentBuilder函数中创建自定义组件HelloComponent，传递参数为class对象并修改对象内的值时，UI不会触发刷新功能。
+
+【反例】
+
+```typescript
+class Tmp {
+  name: string = 'Hello';
+  age: number = 16;
+}
+
+@Builder
+function parentBuilder(params: Tmp) {
+  Row() {
+    Column() {
+      Text(`parentBuilder===${params.name}===${params.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+      // 此写法不属于按引用传递方式，用法错误导致UI不刷新。
+      HelloComponent({ info: params })
+    }
+  }
+}
+
+@Component
+struct HelloComponent {
+  @Prop info: Tmp = new Tmp();
+
+  build() {
+    Row() {
+      Text(`HelloComponent===${this.info.name}===${this.info.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+    }
+  }
+}
+
+@Entry
+@Component
+struct ParentPage {
+  @State nameValue: string = '张三';
+  @State ageValue: number = 18;
+
+  build() {
+    Column() {
+      parentBuilder({ name: this.nameValue, age: this.ageValue })
+      Button('Click me')
+        .onClick(() => {
+          // 此处修改内容时，不会引起HelloComponent处的变化
+          this.nameValue = '李四';
+          this.ageValue = 20;
+        })
+    }
+    .height('100%')
+    .width('100%')
+  }
+}
+```
+
+在parentBuilder函数中创建自定义组件HelloComponent，传递参数为对象字面量形式并修改对象内的值时，UI触发刷新功能。
+
+【正例】
+
+```typescript
+class Tmp {
+  name: string = 'Hello';
+  age: number = 16;
+}
+
+@Builder
+function parentBuilder(params: Tmp) {
+  Row() {
+    Column() {
+      Text(`parentBuilder===${params.name}===${params.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+      // 将整个对象拆分开变成简单类型，属于按引用传递方式，更改属性能够触发UI刷新。
+      HelloComponent({ childName: params.name, childAge: params.age })
+    }
+  }
+}
+
+@Component
+struct HelloComponent {
+  @Prop childName: string = '';
+  @Prop childAge: number = 0;
+
+  build() {
+    Row() {
+      Text(`HelloComponent===${this.childName}===${this.childAge}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+    }
+  }
+}
+
+@Entry
+@Component
+struct ParentPage {
+  @State nameValue: string = '张三';
+  @State ageValue: number = 18;
+
+  build() {
+    Column() {
+      parentBuilder({ name: this.nameValue, age: this.ageValue })
+      Button('Click me')
+        .onClick(() => {
+          // 此处修改内容时，会引起HelloComponent处的变化
+          this.nameValue = '李四';
+          this.ageValue = 20;
+        })
+    }
+    .height('100%')
+    .width('100%')
+  }
+}
+```
