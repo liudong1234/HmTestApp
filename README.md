@@ -42,6 +42,8 @@ Button('add counter')
 
 #### 自定义组件
 
+##### 创建组件
+
 ```typescript
 @Component
 struct HelloComponent {
@@ -63,3 +65,95 @@ struct HelloComponent {
 > 如果在其他文件中引用自定义组件，需要使用export关键字导出组件，并在使用的页面import该自定义组件。
 
 @Entry装饰的自定义组件将作为UI页面的入口。在单个UI页面中，仅允许存在一个由@Entry装饰的自定义组件作为页面的入口。@Entry可以接受一个可选的LocalStorage的参数。
+
+##### 组件生命周期
+
+1. aboutToAppear:build函数之前执行
+2. onDidBuild:在build函数完成之后进行
+3. aboutToDisappear: 组件销毁之前执行
+
+![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250820084745.80424187280311899336960025005691:50001231000000:2800:1317DA2735D64AA0E9944858ECF8661C8E35BDCF923ADE4C1F35274EA2BF5A79.png)
+
+##### 自定义布局
+
+1. onMeasureSize:组件每次布局时触发，计算子组件的尺寸，其执行时间先于onPlaceChildren。
+2. onPlaceChildren:组件每次布局时触发，设置子组件的起始位置。
+
+```typescript
+// xxx.ets
+@Entry
+@Component
+struct Index {
+  build() {
+    Column() {
+      CustomLayout({ builder: ColumnChildren })
+    }
+  }
+}
+
+// 通过builder的方式传递多个组件，作为自定义组件的一级子组件（即不包含容器组件，如Column）
+@Builder
+function ColumnChildren() {
+  ForEach([1, 2, 3], (index: number) => { // 暂不支持lazyForEach的写法
+    Text('S' + index)
+      .fontSize(30)
+      .width(100)
+      .height(100)
+      .borderWidth(2)
+      .offset({ x: 10, y: 20 })
+  })
+}
+
+@Component
+struct CustomLayout {
+  @Builder
+  doNothingBuilder() {
+  };
+
+  @BuilderParam builder: () => void = this.doNothingBuilder;
+  @State startSize: number = 100;
+  result: SizeResult = {
+    width: 0,
+    height: 0
+  };
+
+  // 第一步：计算各子组件的大小
+  onMeasureSize(selfLayoutInfo: GeometryInfo, children: Array<Measurable>, constraint: ConstraintSizeOptions) {
+    let size = 100;
+    children.forEach((child) => {
+      let result: MeasureResult = child.measure({ minHeight: size, minWidth: size, maxWidth: size, maxHeight: size })
+      size += result.width / 2;
+    })
+    // this.result在该用例中代表自定义组件本身的大小，onMeasureSize方法返回的是组件自身的尺寸。
+    this.result.width = 100;
+    this.result.height = 400;
+    return this.result;
+  }
+  // 第二步：放置各子组件的位置
+  onPlaceChildren(selfLayoutInfo: GeometryInfo, children: Array<Layoutable>, constraint: ConstraintSizeOptions) {
+    let startPos = 300;
+    children.forEach((child) => {
+      let pos = startPos - child.measureResult.height;
+      child.layout({ x: pos, y: pos })
+    })
+  }
+
+  build() {
+    this.builder()
+  }
+}
+```
+
+##### 组件成员属性访问限定符使用限制
+
+1. @State/@Prop/@Provide/@BuilderParam/：可以被外部初始化，也可以使用本地值进行初始化
+2. @StorageLink/@StorageProp/@LocalStorageLink/@LocalStorageProp/@Consume:不可以被外部初始化
+3. @Link/@ObjectLink:必须被外部初始化，禁止本地初始化。
+4. @Require含义是当前被@Require装饰的变量必须被外部初始化
+
+##### 组件拓展
+
+ArkUI通过**@Builder**装饰器为开发者提供代码精简解决方案，该装饰器不仅能通过模块化封装简化UI开发流程，还衍生出**@BuilderParam装饰器**、@LocalBuilder装饰器和**wrapBuilder**
+
+###### @Builder装饰器：自定义构建函数
+
