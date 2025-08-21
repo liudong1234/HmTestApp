@@ -337,7 +337,7 @@ struct Single {
 
 在@ComponentV2装饰器装饰的自定义组件中配合@ObservedV2和@Trace装饰器，通过按值传递的方式可以实现UI刷新功能。
 
-### 在@Builder内创建自定义组件传递参数不刷新问题
+在@Builder内创建自定义组件传递参数不刷新问题
 
 在parentBuilder函数中创建自定义组件HelloComponent，传递参数为class对象并修改对象内的值时，UI不会触发刷新功能。
 
@@ -455,3 +455,113 @@ struct ParentPage {
   }
 }
 ```
+
+@Builder方法定义时使用MutableBinding，构造时没有给MutableBinding类型参数传递set访问器，触发set访问器会造成运行时错误。
+
+正确使用方法
+
+```typescript
+import { Binding, MutableBinding, UIUtils } from '@kit.ArkUI';
+
+@Builder
+function CustomButton(num2: MutableBinding<number>) {
+  // CustomButton的第二个参数为MutableBinding，一个可变数据绑定的泛型类
+  Row() {
+    Button(`Custom Button: ${num2.value}`)
+      .onClick(() => {
+        // 可变数据绑定的泛型类可以修改绑定的值
+        num2.value += 1;
+      })
+  }
+}
+
+@Entry
+@ComponentV2
+struct CompV2 {
+  @Local number1: number = 5;
+  @Local number2: number = 10;
+
+  build() {
+    Column() {
+      Text('parent component')
+
+      CustomButton(
+        UIUtils.makeBinding<number>(
+          () => this.number2, // GetterCallback
+          (val: number) => {
+            this.number2 = val;
+          }) // SetterCallback 必须提供，否则触发时会造成运行时错误
+      )
+    }
+  }
+}
+```
+
+不使用MutableBinding的情况下，在@Builder装饰的函数内部修改参数值，修改不会生效且可能造成运行时错误。
+
+###### @LocalBuilder装饰器： 维持组件关系
+
+@LocalBuilder拥有和局部@Builder相同的功能，且比局部@Builder能够更好的确定组件的父子关系和状态管理的父子关系。
+
+定义语法：
+
+```typescript
+@LocalBuilder myBuilderFunction() { ... }
+```
+
+使用方法
+
+```typescript
+this.myBuilderFunction()
+```
+
+限制条件
+
+- @LocalBuilder只能在所属组件内声明，不允许全局声明。
+- @LocalBuilder不能与内置装饰器或自定义装饰器一起使用。
+- 在自定义组件中，@LocalBuilder不能用来装饰静态函数。
+
+@LocalBuilder和@Builder区别说明
+
+当函数componentBuilder被@Builder修饰时，显示效果为“Child”；当函数componentBuilder被@LocalBuilder修饰时，显示效果是“Parent”。
+
+说明：
+
+@Builder componentBuilder()通过this.componentBuilder的形式传给子组件@BuilderParam customBuilderParam，this指向子组件Child的实例。
+
+@LocalBuilder componentBuilder()通过this.componentBuilder的形式传给子组件@BuilderParam customBuilderParam，this指向父组件Parent的实例。
+
+```typescript
+@Component
+struct Child {
+  label: string = 'Child';
+  @BuilderParam customBuilderParam: () => void;
+
+  build() {
+    Column() {
+      this.customBuilderParam()
+    }
+  }
+}
+
+@Entry
+@Component
+struct Parent {
+  label: string = 'Parent';
+
+  @Builder componentBuilder() {
+    Text(`${this.label}`)
+  }
+
+  // @LocalBuilder componentBuilder() {
+  //   Text(`${this.label}`)
+  // }
+
+  build() {
+    Column() {
+      Child({ customBuilderParam: this.componentBuilder })
+    }
+  }
+}
+```
+

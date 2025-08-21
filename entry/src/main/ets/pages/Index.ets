@@ -1,75 +1,94 @@
-import { BusinessError } from '@kit.BasicServicesKit';
-
-@Builder
-function overBuilderValue(params: string) {
-  Row() {
-    Text(`text: ${params}`)
-      .fontSize(30)
-  }
-}
-class Tmp
-{
-  text: string = '';
-}
-class Tmp2
-{
-  age: number = 0;
+@ObservedV2
+class Info {
+  @Trace name: string = '';
+  @Trace age: number = 0;
 }
 
-@Builder
-function overBuilderRef(params: Tmp, params2: Tmp2) {
-  Row() {
-    Text(`${params.text} ${params2.age}`)
-      .fontSize(30)
-  }
-}
+@ComponentV2
+struct ChildPage {
+  @Require @Param childInfo: Info;
 
-// 应用/服务包含的页面
-@Entry
-@Component
-struct Index {
-  @State message: string = "hello world";
-  @State age: number = 100;
   build() {
-    Row() {
-      Column() {
-        overBuilderValue(this.message);
-        Divider()
-        overBuilderRef({text: this.message}, {age: this.age})//两个参数的情况下，状态不变
-        Image("https://th.bing.com/th/id/R.a40465e4923e78a6f6ff5decae12dbe4?rik=yMGkFld4EQIzBg&riu=http%3a%2f%2fpic.baike.soso.com%2fp%2f20140221%2f20140221010641-487941928.jpg&ehk=u%2flM4BrrMchlrRGQx3U1Y9BhaHiZ5lpx91Hp2PIyTeo%3d&risl=&pid=ImgRaw&r=0")
-          .height(100)
-          .onClick(() => {
-            this.message = "leaf";
-            this.age = 10000;
-          })
-        Divider()
-        Button() {
-          Text('Next')
-            .fontSize(40)
-            .fontWeight(FontWeight.Bold)
-        }
-        .type(ButtonType.Capsule)
-        .margin({
-          top: 5
-        })
-        .backgroundColor(Color.Brown)
-        .width('40%')
-        .height('15%')
-        .onClick(() => {
-          console.info(`successed in clicking  the 'next' button`)
-          //获取UIContext
-          let uiContext: UIContext = this.getUIContext();
-          let router = uiContext.getRouter();
-          //跳转第二页
-          router.pushUrl({url: 'pages/Second'}).then(() => {
-            console.info(`successed in jumping to the second page`)
-          }).catch((err: BusinessError) => {
-            console.error(`Faild to jump to the second page, ${err}`)
-          })
-        })
-      }
-      .width('100%')
+    Column() {
+      Text(`自定义组件 name :${this.childInfo.name}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+      Text(`自定义组件 age :${this.childInfo.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
     }
-    .height("100%")
+  }
+}
+
+@Entry
+@ComponentV2
+struct ParentPage {
+  info1: Info = { name: "Tom", age: 25 };
+  @Local info2: Info = { name: "Tom", age: 25 };
+
+  @LocalBuilder
+  privateBuilder() {
+    Column() {
+      Text(`局部LocalBuilder@Builder name :${this.info1.name}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+      Text(`局部LocalBuilder@Builder age :${this.info1.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+    }
+  }
+
+  @LocalBuilder
+  privateBuilderSecond() {
+    Column() {
+      Text(`局部LocalBuilder@Builder name :${this.info2.name}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+      Text(`局部LocalBuilder@Builder age :${this.info2.age}`)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+    }
+  }
+
+  build() {
+    Column() {
+      Text(`info1: ${this.info1.name}  ${this.info1.age}`) // Text1
+        .fontSize(30)
+        .fontWeight(FontWeight.Bold)
+      this.privateBuilder() // 调用局部@Builder
+      Line()
+        .width('100%')
+        .height(10)
+        .backgroundColor('#000000').margin(10)
+      Text(`info2: ${this.info2.name}  ${this.info2.age}`) // Text2
+        .fontSize(30)
+        .fontWeight(FontWeight.Bold)
+      this.privateBuilderSecond() // 调用局部@Builder
+      Line()
+        .width('100%')
+        .height(10)
+        .backgroundColor('#000000').margin(10)
+      Text(`info1: ${this.info1.name}  ${this.info1.age}`) // Text1
+        .fontSize(30)
+        .fontWeight(FontWeight.Bold)
+      ChildPage({ childInfo: this.info1 }) // 调用自定义组件
+      Line()
+        .width('100%')
+        .height(10)
+        .backgroundColor('#000000').margin(10)
+      Text(`info2: ${this.info2.name}  ${this.info2.age}`) // Text2
+        .fontSize(30)
+        .fontWeight(FontWeight.Bold)
+      ChildPage({ childInfo: this.info2 }) // 调用自定义组件
+      Line()
+        .width('100%')
+        .height(10)
+        .backgroundColor('#000000').margin(10)
+      Button("change info1&info2")
+        .onClick(() => {
+          this.info1 = { name: "Cat", age: 18 }; // Text1不会刷新，原因是info1没被装饰器装饰，无法监听到值的改变。
+          this.info2 = { name: "Cat", age: 18 }; // Text2会刷新，原因是info2有装饰器装饰，可以监听到值的改变。
+        })
+    }
   }
 }
