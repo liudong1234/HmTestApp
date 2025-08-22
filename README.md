@@ -1,6 +1,6 @@
-## 学习开发笔记
+# 学习开发笔记
 
-## 一、UI范式
+## UI范式
 
 ### 基本语法
 
@@ -162,7 +162,7 @@ ArkUI通过**@Builder**装饰器为开发者提供代码精简解决方案，该
 
 有两种参数传递方式：
 
-1. 按值传递参数
+1. **按值传递参数**
 
 ```typescript
 @Builder function overBuilder(paramA1: string) {
@@ -182,7 +182,7 @@ struct Parent {
 }
 ```
 
-2. 按引用传递
+2. **按引用传递**
 
 ```typescript
 class Tmp {
@@ -565,3 +565,34 @@ struct Parent {
 }
 ```
 
+###### @BuilderParam装饰器：引用@Builder函数
+
+为组件添加自定义功能
+
+```typescript
+//使用方法
+@Builder
+function overBuilder() {
+}
+
+@Component
+struct Child {
+  @Builder
+  doNothingBuilder() {
+  }
+
+  // 使用自定义组件的自定义构建函数初始化@BuilderParam
+  @BuilderParam customBuilderParam: () => void = this.doNothingBuilder;
+  // 使用全局自定义构建函数初始化@BuilderParam
+  @BuilderParam customOverBuilderParam: () => void = overBuilder;
+
+  build() {
+  }
+}
+```
+
+**限制条件**
+
+- 使用@BuilderParam装饰的变量只能通过@Builder函数进行初始化。
+- 当@Require装饰器和@BuilderParam装饰器一起使用时，@BuilderParam装饰器必须进行初始化。
+- 在自定义组件尾随闭包的场景下，子组件有且仅有一个@BuilderParam用来接收此尾随闭包，且此@BuilderParam装饰的方法不能有参数。
