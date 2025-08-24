@@ -596,3 +596,358 @@ struct Child {
 - 使用@BuilderParam装饰的变量只能通过@Builder函数进行初始化。
 - 当@Require装饰器和@BuilderParam装饰器一起使用时，@BuilderParam装饰器必须进行初始化。
 - 在自定义组件尾随闭包的场景下，子组件有且仅有一个@BuilderParam用来接收此尾随闭包，且此@BuilderParam装饰的方法不能有参数。
+
+###### wrapBuilder：封装全局@Builder
+
+当在一个struct内使用多个全局@Builder函数实现UI的不同效果时，代码维护将变得非常困难，且页面不够整洁。此时，可以使用wrapBuilder封装全局@Builder。
+
+**限制条件**
+
+1. wrapBuilder方法只能传入全局@Builder方法。
+2. wrapBuilder方法返回的WrappedBuilder对象的builder属性方法只能在struct内部使用。
+
+用法
+
+```typescript
+@Builder
+function MyBuilder(value: string, size: number) {
+  Text(value)
+    .fontSize(size)
+}
+
+let globalBuilder: WrappedBuilder<[string, number]> = wrapBuilder(MyBuilder);
+
+@Entry
+@Component
+struct Index {
+  @State message: string = 'Hello World';
+
+  build() {
+    Row() {
+      Column() {
+        globalBuilder.builder(this.message, 50)
+      }
+      .width('100%')
+    }
+    .height('100%')
+  }
+}
+```
+
+##### @Style装饰器 定义拓展组件样式
+
+**使用说明**
+
+- 当前@Styles仅支持通用属性和通用事件。
+- @Styles可以定义在组件内或全局，在全局定义时需在方法名前面添加function关键字，组件内定义时则不需要添加function关键字。
+- 组件内@Styles的优先级高于全局@Styles。框架优先找当前组件内的@Styles，如果找不到，则会全局查找。
+
+```typescript
+@Entry
+@Component
+struct FancyUse {
+  @State heightValue: number = 50;
+
+  @Styles
+  fancy() {
+    .height(this.heightValue)
+    .backgroundColor(Color.Blue)
+    .onClick(() => {
+      this.heightValue = 100;
+    })
+  }
+
+  build() {
+    Column() {
+      Button('change height')
+        .fancy()
+    }
+    .height('100%')
+    .width('100%')
+  }
+}
+```
+
+**限制条件**
+
+- @Styles方法不能有参数，编译期会报错，表明@Styles方法不支持参数。
+- 不支持在@Styles方法内使用逻辑组件，逻辑组件内的属性不生效。
+
+```typescript
+// 错误写法
+@Styles
+function backgroundColorStyle() {
+  if (true) {
+    .backgroundColor(Color.Red)
+  }
+}
+
+// 正确写法
+@Styles
+function backgroundColorStyle() {
+  .backgroundColor(Color.Red)
+}
+```
+
+**使用场景**
+
+```typescript
+// 定义在全局的@Styles封装的样式
+@Styles
+function globalFancy () {
+  .width(150)
+  .height(100)
+  .backgroundColor(Color.Pink)
+}
+
+@Entry
+@Component
+struct FancyUse {
+  @State heightValue: number = 100;
+  // 定义在组件内的@Styles封装的样式
+  @Styles fancy() {
+    .width(200)
+    .height(this.heightValue)
+    .backgroundColor(Color.Yellow)
+    .onClick(() => {
+      this.heightValue = 200;
+    })
+  }
+
+  build() {
+    Column({ space: 10 }) {
+      // 使用全局的@Styles封装的样式
+      Text('FancyA')
+        .globalFancy()
+        .fontSize(30)
+      // 使用组件内的@Styles封装的样式
+      Text('FancyB')
+        .fancy()
+        .fontSize(30)
+    }
+  }
+}
+```
+
+##### @Extend装饰器 定义扩展组件样式
+
+**使用规则**
+
+- 和@Styles不同，@Extend支持封装指定组件的私有属性、私有事件和自身定义的全局方法。
+
+```typescript
+// @Extend(Text)可以支持Text的私有属性fontColor
+@Extend(Text)
+function fancy() {
+  .fontColor(Color.Red)
+}
+
+// superFancyText可以调用预定义的fancy
+@Extend(Text)
+function superFancyText(size: number) {
+  .fontSize(size)
+  .fancy()
+}
+```
+
+- 和@Styles不同，@Extend装饰的方法支持参数，开发者可以在调用时传递参数，调用遵循TS方法传值调用。
+
+```typescript
+// xxx.ets
+@Extend(Text)
+function fancy(fontSize: number) {
+  .fontColor(Color.Red)
+  .fontSize(fontSize)
+}
+
+@Entry
+@Component
+struct FancyUse {
+  build() {
+    Row({ space: 10 }) {
+      Text('Fancy')
+        .fancy(16)
+      Text('Fancy')
+        .fancy(24)
+    }
+  }
+}
+```
+
+- @Extend装饰的方法的参数可以为function，作为Event事件的句柄。
+
+```typescript
+@Extend(Text)
+function makeMeClick(onClick: () => void) {
+  .backgroundColor(Color.Blue)
+  .onClick(onClick)
+}
+
+@Entry
+@Component
+struct FancyUse {
+  @State label: string = 'Hello World';
+
+  onClickHandler() {
+    this.label = 'Hello ArkUI';
+  }
+
+  build() {
+    Row({ space: 10 }) {
+      Text(`${this.label}`)
+        .makeMeClick(() => {
+          this.onClickHandler();
+        })
+    }
+  }
+}
+```
+
+- @Extend的参数可以为状态变量，当状态变量改变时，UI可以正常的被刷新渲染。
+
+```typescript
+@Extend(Text)
+function fancy(fontSize: number) {
+  .fontColor(Color.Red)
+  .fontSize(fontSize)
+}
+
+@Entry
+@Component
+struct FancyUse {
+  @State fontSizeValue: number = 20
+
+  build() {
+    Row({ space: 10 }) {
+      Text('Fancy')
+        .fancy(this.fontSizeValue)
+        .onClick(() => {
+          this.fontSizeValue = 30
+        })
+    }
+  }
+}
+```
+
+**限制条件**
+
+- 和@Styles不同，@Extend仅支持在全局定义，不支持在组件内部定义。
+- 仅限在当前文件内使用，不支持导出。
+
+##### stateStyles：多态样式
+
+@Styles仅仅应用于静态页面的样式复用，stateStyles可以依据组件的内部状态的不同，快速设置不同样式
+
+stateStyles是属性方法，可以根据UI内部状态来设置样式，类似于css伪类，但语法不同。ArkUI提供以下五种状态：
+
+- focused：获焦态。
+- normal：正常态。
+- pressed：按压态。
+- disabled：不可用态。
+- selected：选中态。
+
+**使用场景**
+
+```typescript
+//utton1处于第一个组件，Button2处于第二个组件。按压时显示为pressed态指定的黑色。使用Tab键走焦，Button1获焦并显示为focused态指定的粉色。当Button2获焦的时候，Button2显示为focused态指定的粉色，Button1失焦显示normal态指定的蓝色。
+@Entry
+@Component
+struct StateStylesSample {
+  build() {
+    Column() {
+      Button('Button1')
+        .stateStyles({
+          focused: {
+            .backgroundColor('#ffffeef0')
+          },
+          pressed: {
+            .backgroundColor('#ff707070')
+          },
+          normal: {
+            .backgroundColor('#ff2787d9')
+          }
+        })
+        .margin(20)
+      Button('Button2')
+        .stateStyles({
+          focused: {
+            .backgroundColor('#ffffeef0')
+          },
+          pressed: {
+            .backgroundColor('#ff707070')
+          },
+          normal: {
+            .backgroundColor('#ff2787d9')
+          }
+        })
+    }.margin('30%')
+  }
+}
+```
+
+**@Styles和stateStyles联合使用**
+
+以下示例通过@Styles指定stateStyles的不同状态。
+
+```
+@Entry
+@Component
+struct MyComponent {
+  @Styles normalStyle() {
+    .backgroundColor(Color.Gray)
+  }
+
+  @Styles pressedStyle() {
+    .backgroundColor(Color.Red)
+  }
+
+  build() {
+    Column() {
+      Text('Text1')
+        .fontSize(50)
+        .fontColor(Color.White)
+        .stateStyles({
+          normal: this.normalStyle,
+          pressed: this.pressedStyle,
+        })
+    }
+  }
+}
+```
+
+**在stateStyles里使用常规变量和状态变量**
+
+stateStyles可以通过this绑定组件内的常规变量和状态变量。
+
+```typescript
+//Button默认normal态显示绿色，第一次按下Tab键让Button获焦显示为focus态的红色，点击事件触发后，再次按下Tab键让Button获焦，focus态变为粉色。
+
+@Entry
+@Component
+struct CompWithInlineStateStyles {
+  @State focusedColor: Color = Color.Red;
+  normalColor: Color = Color.Green;
+
+  build() {
+    Column() {
+      Button('clickMe')
+        .height(100)
+        .width(100)
+        .stateStyles({
+          normal: {
+            .backgroundColor(this.normalColor)
+          },
+          focused: {
+            .backgroundColor(this.focusedColor)
+          }
+        })
+        .onClick(() => {
+          this.focusedColor = Color.Pink;
+        })
+        .margin('30%')
+    }
+  }
+}
+```
+
+##### @AnimatableExtend装饰器：定义可动画属性

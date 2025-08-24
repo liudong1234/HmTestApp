@@ -1,0 +1,9 @@
+{
+  "routerMap": [
+    {
+      "name": "HelloWorldPage",
+      "buildFunction": "HelloPageBuilder",
+      "pageSourceFile": "src/main/ets/pages/Helloworld.ets"
+    }
+  ]
+}
