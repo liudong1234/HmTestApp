@@ -9,6 +9,19 @@ class URL {
   url: string = '';
 }
 
+@Extend(Image)
+function imageFancy() {
+  .width('80%')
+  .height(100)
+  .alt('tupian')
+  .margin(20)
+}
+
+@Extend(Text)
+function textFancy(color: Color) {
+  .fontColor(color)
+}
+
 @Builder
 function navigationAction(params: navigationParams) {
   Column() {
@@ -38,31 +51,57 @@ function navigationAction(params: navigationParams) {
 @Builder
 function imageEdge(src: URL) {
   Image(src.url)
-    .height(100)
-    .width('60%')
-    .margin('5')
+    .imageFancy()
 }
 @Builder
 function imagePing(src: URL) {
   Image(src.url)
-    .height(200)
-    .width('80%')
+    .imageFancy()
 }
 
 const globalBuilder : WrappedBuilder<[navigationParams]> = wrapBuilder(navigationAction);
 const imageBuilder: WrappedBuilder<[URL]>[] = [wrapBuilder(imageEdge), wrapBuilder(imagePing)];
 
+@AnimatableExtend(Text)
+function textAnimation(width: number) {
+  .width(width)
+}
 
 @Entry
 @Component
 struct ParentPage {
   @State info: navigationParams = new navigationParams();
+  @State textColor: Color = Color.Red;
+  @State textWidth: number = 80;
   scroller: Scroller = new Scroller();
   @State url: string = "https://haowallpaper.com/link/common/file/getCroppingImg/17424727189736832";
+
+
   build() {
     Scroll(this.scroller) {
       Column() {
-        Text('ParentPage')
+        Button('1')
+          .width(100)
+          .height(100)
+          .stateStyles({
+            focused: {
+              .backgroundColor('red')
+            },
+            pressed: {
+              .backgroundColor('ff707070')
+            },
+            normal: {
+              .backgroundColor('red')
+            }
+          })
+          .onClick(() => {
+            this.textWidth = this.textWidth == 80 ? 160: 80;
+          })
+
+        Text('AnimatableProperty')
+          .textFancy(this.textColor)
+          .textAnimation(this.textWidth)
+          .animation({duration: 1000, curve: Curve.Ease})
         navigationAction({ pathStack: this.info.pathStack, boo: true })
         ChildPageOne()
         ChildPage_BuilderParam({ eventBuilder: navigationAction })
@@ -74,7 +113,8 @@ struct ParentPage {
         })
         Button('切换图片')
           .onClick(() => {
-            this.url = 'https://haowallpaper.com/link/common/file/getCroppingImg/17414408731020672'
+            this.url = 'https://haowallpaper.com/link/common/file/getCroppingImg/17414408731020672';
+            this.textColor = Color.Orange;
           })
       }
       .width('100%')

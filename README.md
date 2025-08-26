@@ -951,3 +951,110 @@ struct CompWithInlineStateStyles {
 ```
 
 ##### @AnimatableExtend装饰器：定义可动画属性
+
+**使用要求**
+
+- @AnimatableExtend仅支持定义在全局，不支持在组件内部定义。
+- @AnimatableExtend定义的函数参数类型必须为number类型或者实现 AnimatableArithmetic<T>接口的自定义类型。
+- @AnimatableExtend定义的函数体内只能调用@AnimatableExtend括号内组件的属性方法。
+
+```typescript
+@AnimatableExtend(Text)
+function animatableWidth(width: number) {
+  .width(width)
+}
+
+@Entry
+@Component
+struct AnimatablePropertyExample {
+  @State textWidth: number = 80;
+
+  build() {
+    Column() {
+      Text("AnimatableProperty")
+        .animatableWidth(this.textWidth)
+        .animation({ duration: 2000, curve: Curve.Ease })
+      Button("Play")
+        .onClick(() => {
+          this.textWidth = this.textWidth == 80 ? 160 : 80;
+        })
+    }.width("100%")
+    .padding(10)
+  }
+}
+```
+
+##### @Require装饰器：校验构造传参
+
+@Require是校验@Prop、@State、@Provide、@BuilderParam、@Param和普通变量(无状态装饰器修饰的变量)是否需要构造传参的一个装饰器。
+
+```typescript
+@Entry
+@Component
+struct Index {
+  @State message: string = 'Hello World';
+
+  @Builder
+  buildTest() {
+    Row() {
+      Text('Hello, world')
+        .fontSize(30)
+    }
+  }
+
+  build() {
+    Row() {
+      //构造Child、ChildV2组件时没有传参，会导致编译不通过。
+      Child()
+      ChildV2()
+    }
+  }
+}
+
+@Component
+struct Child {
+  @Builder
+  buildFunction() {
+    Column() {
+      Text('initBuilderParam')
+        .fontSize(30)
+    }
+  }
+
+  // 使用@Require必须构造时传参。
+  @Require regular_value: string = 'Hello';
+  @Require @State state_value: string = 'Hello';
+  @Require @Provide provide_value: string = 'Hello';
+  @Require @BuilderParam initBuildTest: () => void = this.buildFunction;
+  @Require @Prop initMessage: string = 'Hello';
+
+  build() {
+    Column() {
+      Text(this.initMessage)
+        .fontSize(30)
+      this.initBuildTest();
+    }
+  }
+}
+
+@ComponentV2
+struct ChildV2 {
+  // 使用@Require必须构造时传参。
+  @Require @Param message: string;
+
+  build() {
+    Column() {
+      Text(this.message)
+    }
+  }
+}
+```
+
+##### @Reusable装饰器：组件复用
+
+@Reusable装饰器标记的自定义组件支持视图节点、组件实例和状态上下文的复用，避免重复创建和销毁，提升性能。
+
+**限制条件**
+
+- @Reusable装饰器仅用于自定义组件。
+- 被@Reusable装饰的自定义组件在复用时，会递归调用该自定义组件及其所有子组件的aboutToReuse回调函数。若在子组件的aboutToReuse函数中修改了父组件的状态变量，此次修改将不会生效，请避免此类用法。若需设置父组件的状态变量，可使用setTimeout设置延迟执行，将任务抛出组件复用的作用范围，使修改生效。
