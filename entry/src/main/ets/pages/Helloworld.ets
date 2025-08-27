@@ -2,7 +2,12 @@
 export function HelloPageBuilder() {
   HellowWorldPage()
 }
-
+export class Message {
+  value: string | undefined;
+  constructor(value: string) {
+    this.value = value;
+  }
+}
 
 class BasicDataSource implements IDataSource {
   private listener: DataChangeListener | undefined = undefined;
@@ -79,7 +84,9 @@ struct ReuseComponentChild {
   @Link num: number;
 
   aboutToReuse(params: ESObject): void {
-    this.num = -1 * params.num;
+    setTimeout(() => {
+      this.num = -1 * params.num;
+    }, 1)
   }
 
   build() {

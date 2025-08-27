@@ -1,4 +1,5 @@
 import { HelloPageBuilder } from './Helloworld';
+import { Message} from './Helloworld'
 
 class navigationParams {
   pathStack: NavPathStack = new NavPathStack();
@@ -75,7 +76,7 @@ struct ParentPage {
   @State textWidth: number = 80;
   scroller: Scroller = new Scroller();
   @State url: string = "https://haowallpaper.com/link/common/file/getCroppingImg/17424727189736832";
-
+  @State switch: boolean = true;
 
   build() {
     Scroll(this.scroller) {
@@ -96,14 +97,17 @@ struct ParentPage {
           })
           .onClick(() => {
             this.textWidth = this.textWidth == 80 ? 160: 80;
+            this.switch = !this.switch;
           })
-
+        if (this.switch) {
+          MessageChild({message: new Message('child')})
+            .reuseId('Child')
+        }
         Text('AnimatableProperty')
           .textFancy(this.textColor)
           .textAnimation(this.textWidth)
           .animation({duration: 1000, curve: Curve.Ease})
         navigationAction({ pathStack: this.info.pathStack, boo: true })
-        ChildPageOne()
         ChildPage_BuilderParam({ eventBuilder: navigationAction })
 
         Divider()
@@ -149,5 +153,25 @@ struct ChildPage_BuilderParam {
       // 对传递过来的全局@Builder进行参数修改，可以实现禁用点击跳转的功能。
       this.eventBuilder({ pathStack: this.info.pathStack, boo: false })
     }
+  }
+}
+
+@Reusable
+@Component
+struct MessageChild {
+  @State message: Message = new Message("abouttoreuse");
+
+  aboutToReuse(params: Record<string, ESObject>): void {
+    console.info("recyle====child===")
+    this.message = params.message as Message;
+  }
+
+  build() {
+    Column() {
+      Text(this.message.value)
+        .fontSize(30)
+    }
+    .borderWidth(1)
+    .height(100)
   }
 }

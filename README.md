@@ -1058,3 +1058,201 @@ struct ChildV2 {
 
 - @Reusable装饰器仅用于自定义组件。
 - 被@Reusable装饰的自定义组件在复用时，会递归调用该自定义组件及其所有子组件的aboutToReuse回调函数。若在子组件的aboutToReuse函数中修改了父组件的状态变量，此次修改将不会生效，请避免此类用法。若需设置父组件的状态变量，可使用setTimeout设置延迟执行，将任务抛出组件复用的作用范围，使修改生效。
+- ComponentContent不支持传入@Reusable装饰器装饰的自定义组件。
+
+```typescript
+import { ComponentContent } from "@kit.ArkUI";
+
+@Builder
+function buildCreativeLoadingDialog(closedClick: () => void) {
+  Crash()
+}
+
+// 如果注释掉就可以正常弹出弹窗，如果加上@Reusable就直接crash。
+@Reusable
+@Component
+export struct Crash {
+  build() {
+    Column() {
+      Text("Crash")
+        .fontSize(12)
+        .lineHeight(18)
+        .fontColor(Color.Blue)
+        .margin({
+          left: 6
+        })
+    }.width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+  }
+}
+
+@Entry
+@Component
+struct Index {
+  @State message: string = 'Hello World';
+  private uiContext = this.getUIContext();
+
+  build() {
+    RelativeContainer() {
+      Text(this.message)
+        .id('Index')
+        .fontSize(50)
+        .fontWeight(FontWeight.Bold)
+        .alignRules({
+          center: { anchor: '__container__', align: VerticalAlign.Center },
+          middle: { anchor: '__container__', align: HorizontalAlign.Center }
+        })
+        .onClick(() => {
+          // ComponentContent底层是BuilderNode，BuilderNode不支持传入@Reusable注解的自定义组件。
+          let contentNode = new ComponentContent(this.uiContext, wrapBuilder(buildCreativeLoadingDialog), () => {
+          });
+          this.uiContext.getPromptAction().openCustomDialog(contentNode);
+        })
+    }
+    .height('100%')
+    .width('100%')
+  }
+}
+```
+
+- @Reusable装饰器不建议嵌套使用，会增加内存，降低复用效率，加大维护难度。嵌套使用会导致额外缓存池的生成，各缓存池拥有相同树状结构，复用效率低下。此外，嵌套使用会使生命周期管理复杂，资源和变量共享困难
+
+##### 使用场景
+
+###### 动态布局更新
+
+```typescript
+// xxx.ets
+export class Message {
+  value: string | undefined;
+
+  constructor(value: string) {
+    this.value = value;
+  }
+}
+
+@Entry
+@Component
+struct Index {
+  @State switch: boolean = true;
+
+  build() {
+    Column() {
+      Button('Hello')
+        .fontSize(30)
+        .fontWeight(FontWeight.Bold)
+        .onClick(() => {
+          this.switch = !this.switch;
+        })
+      if (this.switch) {
+        // 如果只有一个复用的组件，可以不用设置reuseId。
+        Child({ message: new Message('Child') })
+          .reuseId('Child')
+      }
+    }
+    .height("100%")
+    .width('100%')
+  }
+}
+
+@Reusable
+@Component
+struct Child {
+  @State message: Message = new Message('AboutToReuse');
+
+  aboutToReuse(params: Record<string, ESObject>) {
+    console.info("Recycle====Child==");
+    this.message = params.message as Message;
+  }
+
+  build() {
+    Column() {
+      Text(this.message.value)
+        .fontSize(30)
+    }
+    .borderWidth(1)
+    .height(100)
+  }
+}
+```
+
+###### 列表滚动配合LazyForEach使用
+
+```typescript
+class MyDataSource implements IDataSource {
+  private dataArray: string[] = [];
+  private listener: DataChangeListener | undefined;
+
+  public totalCount(): number {
+    return this.dataArray.length;
+  }
+
+  public getData(index: number): string {
+    return this.dataArray[index];
+  }
+
+  public pushData(data: string): void {
+    this.dataArray.push(data);
+  }
+
+  public reloadListener(): void {
+    this.listener?.onDataReloaded();
+  }
+
+  public registerDataChangeListener(listener: DataChangeListener): void {
+    this.listener = listener;
+  }
+
+  public unregisterDataChangeListener(listener: DataChangeListener): void {
+    this.listener = undefined;
+  }
+}
+
+@Entry
+@Component
+struct ReuseDemo {
+  private data: MyDataSource = new MyDataSource();
+
+  aboutToAppear() {
+    for (let i = 1; i < 1000; i++) {
+      this.data.pushData(i + "");
+    }
+  }
+
+  // ...
+  build() {
+    Column() {
+      List() {
+        LazyForEach(this.data, (item: string) => {
+          ListItem() {
+            CardView({ item: item })
+          }
+        }, (item: string) => item)
+      }
+    }
+  }
+}
+
+// 复用组件
+@Reusable
+@Component
+export struct CardView {
+  // 被\@State修饰的变量item才能更新，未被\@State修饰的变量不会更新。
+  @State item: string = '';
+
+  aboutToReuse(params: Record<string, Object>): void {
+    this.item = params.item as string;
+  }
+
+  build() {
+    Column() {
+      Text(this.item)
+        .fontSize(30)
+    }
+    .borderWidth(1)
+    .height(100)
+  }
+}
+```
+
