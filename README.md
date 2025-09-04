@@ -1,6 +1,6 @@
 # 学习开发笔记
 
-## UI范式
+# ArkTS声明式开发范式
 
 ### 基本语法
 
@@ -1256,3 +1256,196 @@ export struct CardView {
 }
 ```
 
+### 状态管理
+
+装饰器可按数据传递形式和同步类型分为：只读的单向传递和可变更的双向传递。
+
+图示如下，具体装饰器的介绍，可详见管理组件拥有的状态和管理应用拥有的状态。开发者可以利用这些能力来实现数据和UI的联动。
+
+![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250830120106.53228013539434080653391293868526:50001231000000:2800:81E0A577A2576DAC02890A4FE680AA6A65F09CE2EEB08B8F5D57486227BCE0D4.png)
+
+上图中，Components部分的装饰器为组件级别的状态管理，Application部分为应用的状态管理。开发者可以通过@StorageLinkk/@LocalStorageLink实现应用和组件状态的双向同步，通过@StorageProp/@LocalStorageProp实现应用和组件状态的单向同步。
+
+管理组件拥有的状态，即图中Components级别的状态管理：
+
+- @State：@State装饰的变量拥有其所属组件的状态，可以作为其子组件单向和双向同步的数据源。当其数值改变时，会引起相关组件的渲染刷新。
+- @Prop：@Prop装饰的变量可以和父组件建立单向同步关系，@Prop装饰的变量是可变的，但修改不会同步回父组件。
+- @Link：@Link装饰的变量可以和父组件建立双向同步关系，子组件中@Link装饰变量的修改会同步给父组件中建立双向数据绑定的数据源，父组件的更新也会同步给@Link装饰的变量。
+- @Provide/@Consume：@Provide/@Consume装饰的变量用于跨组件层级（多层组件）同步状态变量，可以不需要通过参数命名机制传递，通过alias（别名）或者属性名绑定。
+- @Observed：@Observed装饰class，需要观察多层嵌套场景的class需要被@Observed装饰。单独使用@Observed没有任何作用，需要和@ObjectLink、@Prop联用。
+- @ObjectLink：@ObjectLink装饰的变量接收@Observed装饰的class的实例，应用于观察多层嵌套场景，和父组件的数据源构建双向同步。
+
+说明
+
+仅@Observed/@ObjectLink可以观察嵌套场景，其他的状态变量仅能观察第一层，详情见各个装饰器章节的“观察变化和行为表现”小节。
+
+管理应用拥有的状态，即图中Application级别的状态管理：
+
+- AppStorage是应用程序中的一个特殊的单例LocalStorage对象，是应用级的数据库，和进程绑定，通过@StorageProp和@StorageLink装饰器可以和组件联动。
+- AppStorage是应用状态的“中枢”，将需要与组件（UI）交互的数据存入AppStorage，比如持久化数据PersistentStorage和环境变量Environment。UI再通过AppStorage提供的装饰器或API接口访问这些数据。
+- 框架还提供了LocalStorage，AppStorage是LocalStorage特殊的单例。LocalStorage是应用程序声明的应用状态的内存“数据库”，通常用于页面级的状态共享，通过@LocalStorageProp和@LocalStorageLink装饰器可以和UI联动。
+
+#### 状态管理(V1)
+
+##### 管理组件拥有的状态
+
+###### @State装饰器：组件内状态
+
+初始化规则
+
+![0000000000011111111.20250830120308.28287587221161185999049189188074:50001231000000:2800:9775EAEC34A501751B0B3EB26EDC3685D7930339F6493ED5EDA6FE45B83DB17A.png](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250830120308.28287587221161185999049189188074:50001231000000:2800:9775EAEC34A501751B0B3EB26EDC3685D7930339F6493ED5EDA6FE45B83DB17A.png)
+
+**状态变量只能影响其直接绑定的UI组件的刷新**
+
+```typescript
+class Info {
+  address: string = '杭州';
+
+  constructor(address: string) {
+    this.address = address;
+  }
+}
+
+class User {
+  info: Info = new Info('天津');
+}
+
+@Entry
+@Component
+struct Test {
+  @State info: Info = new Info('上海');
+  @State user: User = new User();
+
+  aboutToAppear(): void {
+    this.user.info = this.info;
+  }
+
+  build() {
+    Column() {
+      Text(`${this.info.address}`);
+      Text(`${this.user.info.address}`);
+      Button('change')
+        .onClick(() => {
+          this.user.info.address = '北京';
+        })
+    }
+  }
+}
+```
+
+在aboutToAppear中，info的引用被赋值给了user的成员属性info。因此，点击按钮改变info中的属性时，会触发第一个Text组件的刷新。第二个Text组件由于观测能力仅有一层，无法检测到二层属性的变化，所以不会刷新。
+
+**使用a.b(this.object)形式调用，不会触发UI刷新**
+
+在build方法内，当@State装饰的变量是Object类型、且通过a.b(this.object)形式调用时，b方法内传入的是this.object的原始对象，修改其属性，无法触发UI刷新。如下例中，通过静态方法Balloon.increaseVolume或者this.reduceVolume修改balloon的volume时，UI不会刷新。
+
+状态变量观察类属性变化是通过代理捕获其变化的，当使用a.b(this.object)调用时，框架会将代理对象转换为原始对象。修改原始对象属性，无法观察，因此UI不会刷新。开发者可以使用如下方法修改：
+
+1. 先将this.balloon赋值给临时变量。
+2. 再使用临时变量完成原本的调用逻辑。
+
+```typescript
+class Balloon {
+  volume: number;
+  constructor(volume: number) {
+    this.volume = volume;
+  }
+
+  static increaseVolume(balloon:Balloon) {
+    balloon.volume += 2;
+  }
+}
+
+@Entry
+@Component
+struct Index {
+  @State balloon: Balloon = new Balloon(10);
+
+  reduceVolume(balloon:Balloon) {
+    balloon.volume -= 1;
+  }
+
+  build() {
+    Column({space:8}) {
+      Text(`The volume of the balloon is ${this.balloon.volume} cubic centimeters.`)
+        .fontSize(30)
+      Button(`increaseVolume`)
+        .onClick(()=>{
+          // 通过赋值给临时变量保留Proxy代理
+          let balloon1 = this.balloon;
+          Balloon.increaseVolume(balloon1);
+        })
+      Button(`reduceVolume`)
+        .onClick(()=>{
+          // 通过赋值给临时变量保留Proxy代理
+          let balloon2 = this.balloon;
+          this.reduceVolume(balloon2);
+        })
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+```
+
+**用注册回调的方式更改状态变量需要执行解注册**
+
+开发者可以在aboutToAppear中注册箭头函数，以此改变组件中的状态变量。
+
+> [!WARNING]
+> 需要在aboutToDisappear中将注册的函数置空，以避免箭头函数捕获自定义组件的this实例，导致自定义组件无法被释放，从而造成内存泄漏。
+
+```typescript
+class Model {
+  private callback: (() => void) | undefined = () => {};
+
+  add(callback: () => void): void {
+    this.callback = callback;
+  }
+
+  delete(): void {
+    this.callback = undefined;
+  }
+
+  call(): void {
+    if (this.callback) {
+      this.callback();
+    }
+  }
+}
+
+let model: Model = new Model();
+
+@Entry
+@Component
+struct Test {
+  @State count: number = 10;
+
+  aboutToAppear(): void {
+    model.add(() => {
+      this.count++;
+    })
+  }
+
+  build() {
+    Column() {
+      Text(`count值: ${this.count}`)
+      Button('change')
+        .onClick(() => {
+          model.call();
+        })
+    }
+  }
+
+  aboutToDisappear(): void {
+    model.delete();
+  }
+}
+```
+
+###### @Prop装饰器：父子单向同步
+
+@Prop装饰的变量具有以下特性：
+
+- @Prop装饰的变量允许本地修改，但修改不会同步回父组件。
+- 当数据源更改时，@Prop装饰的变量都会更新，并且会覆盖本地所有更改。

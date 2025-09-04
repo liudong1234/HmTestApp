@@ -9,6 +9,14 @@ export class Message {
   }
 }
 
+export default class PlayDetailViewModel {
+  coverUrl: string = '00ff00';
+
+  changeCoverUrl = (model: PlayDetailViewModel) => {
+    model.coverUrl = '00f5ff';
+  }
+}
+
 class BasicDataSource implements IDataSource {
   private listener: DataChangeListener | undefined = undefined;
   public dataArray: number[] = [];
@@ -93,3 +101,4 @@ struct ReuseComponentChild {
     Text('ReuseComponentChild num: ' + this.num.toString())
   }
 }
+

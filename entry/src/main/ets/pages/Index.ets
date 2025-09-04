@@ -4,9 +4,9 @@ import {WrappedBuilderComponent} from './LearnFancy'
 @Entry
 @Component
 struct NavigationExample {
-  @State TooTmp: ToolbarItem = {'value': "func", 'icon': "./image/ic_public_highlights.svg", 'action': ()=> {}}
+  @State TooTmp: ToolbarItem = {'value': "func", 'icon': "image/ic_public_highlights.svg", 'action': ()=> {}}
   private arr: number[] = [1, 2, 3];
-
+  @State selectedDate: Date = new Date('2025-09-01');
   build() {
     Column() {
       Navigation() {
@@ -29,6 +29,7 @@ struct NavigationExample {
                   .textAlign(TextAlign.Center)
                 NavDestination() {
                   WrappedBuilderComponent()
+                    .width('100%')
                 }
                 .title("NavDestinationTitle" + item)
               }
@@ -41,11 +42,11 @@ struct NavigationExample {
       .title("主标题")
       .mode(NavigationMode.Split)
       .menus([
-        {value: "", icon: "./image/ic_public_search.svg", action: ()=> {}},
-        {value: "", icon: "./image/ic_public_add.svg", action: ()=> {}},
-        {value: "", icon: "./image/ic_public_add.svg", action: ()=> {}},
-        {value: "", icon: "./image/ic_public_add.svg", action: ()=> {}},
-        {value: "", icon: "./image/ic_public_add.svg", action: ()=> {}}
+        {value: "", icon: "image/ic_public_search.svg", action: ()=> {}},
+        {value: "", icon: "image/ic_public_add.svg", action: ()=> {}},
+        {value: "", icon: "image/ic_public_add.svg", action: ()=> {}},
+        {value: "", icon: "image/ic_public_add.svg", action: ()=> {}},
+        {value: "", icon: "image/ic_public_add.svg", action: ()=> {}}
       ])
       .toolbarConfiguration([this.TooTmp, this.TooTmp, this.TooTmp])
     }
