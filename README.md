@@ -1291,6 +1291,10 @@ export struct CardView {
 
 ###### @State装饰器：组件内状态
 
+> 被状态变量装饰器装饰的变量称为状态变量，使普通变量具备状态属性。当状态变量改变时，会触发其直接绑定的UI组件渲染更新。
+>
+> 在状态变量相关装饰器中，@State是最基础的装饰器，也是大部分状态变量的数据源。
+
 初始化规则
 
 ![0000000000011111111.20250830120308.28287587221161185999049189188074:50001231000000:2800:9775EAEC34A501751B0B3EB26EDC3685D7930339F6493ED5EDA6FE45B83DB17A.png](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250830120308.28287587221161185999049189188074:50001231000000:2800:9775EAEC34A501751B0B3EB26EDC3685D7930339F6493ED5EDA6FE45B83DB17A.png)
@@ -1445,7 +1449,470 @@ struct Test {
 
 ###### @Prop装饰器：父子单向同步
 
+> @Prop装饰的变量可以和父组件建立单向同步关系。
+
 @Prop装饰的变量具有以下特性：
 
 - @Prop装饰的变量允许本地修改，但修改不会同步回父组件。
 - 当数据源更改时，@Prop装饰的变量都会更新，并且会覆盖本地所有更改。
+-  @Prop装饰的变量是私有的，只能在组件内访问。
+
+![0000000000011111111.20250905153532.40886385589545255636345392382156:50001231000000:2800:C44E331421B442ED2173681BA26CBC5FD0BDD1BE83CB8757EE93ECDBD7D4F695.png](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250905153532.40886385589545255636345392382156:50001231000000:2800:C44E331421B442ED2173681BA26CBC5FD0BDD1BE83CB8757EE93ECDBD7D4F695.png)
+
+允许的类型：Object、class、string、number、boolean、enum类型，以及这些类型的数组。Map， Set， Date
+
+对于@State和@Prop的同步场景：
+
+- 使用父组件中@State变量的值初始化子组件中的@Prop变量。当@State变量变化时，该变量值也会同步更新至@Prop变量。
+- @Prop装饰的变量的修改不会影响其数据源@State装饰变量的值。
+- 除了@State，数据源也可以用@Link或@Prop装饰，对@Prop的同步机制是相同的。
+- 数据源和@Prop变量的类型需要相同，@Prop允许简单类型和class类型。
+- 当装饰的对象是Date时，可以观察到Date整体的赋值，同时可通过调用Date的接口setFullYear, setMonth, setDate, setHours, setMinutes, setSeconds, setMilliseconds, setTime, setUTCFullYear, setUTCMonth, setUTCDate, setUTCHours, setUTCMinutes, setUTCSeconds, setUTCMilliseconds 更新Date的属性
+- 当装饰的变量是Map时，可以观察到Map整体的赋值，同时可通过调用Map的接口set, clear, delete 更新Map的值
+- 当装饰的变量是Set时，可以观察到Set整体的赋值，同时可通过调用Set的接口add, clear, delete 更新Set的值
+
+**父组件@State数组项到子组件@Prop简单数据类型同步**
+
+```typescript
+@Component
+struct Child {
+  @Prop value: number = 0;
+
+  build() {
+    Text(`${this.value}`)
+      .fontSize(50)
+      .onClick(() => {
+        this.value++;
+      })
+  }
+}
+
+@Entry
+@Component
+struct Index {
+  @State arr: number[] = [1, 2, 3];
+
+  build() {
+    Row() {
+      Column() {
+        Child({ value: this.arr[0] })
+        Child({ value: this.arr[1] })
+        Child({ value: this.arr[2] })
+
+        Divider().height(5)
+
+        ForEach(this.arr,
+          (item: number) => {
+            Child({ value: item })
+          },
+          (item: number) => item.toString()
+        )
+        Text('replace entire arr')
+          .fontSize(50)
+          .onClick(() => {
+            // 两个数组都包含项“3”。
+            this.arr = this.arr[0] == 1 ? [3, 4, 5] : [1, 2, 3];
+          })
+      }
+    }
+  }
+}
+```
+
+**@Prop嵌套场景**
+
+在嵌套场景下，每一层都要用@Observed装饰，且每一层都要被@Prop接收，这样才能观察到嵌套场景。
+
+```typescript
+// 以下是嵌套类对象的数据结构。
+@Observed
+class Son {
+  public title: string;
+
+  constructor(title: string) {
+    this.title = title;
+  }
+}
+
+@Observed
+class Father {
+  public name: string;
+  public son: Son;
+
+  constructor(name: string, son: Son) {
+    this.name = name;
+    this.son = son;
+  }
+}
+```
+
+以下组件层次结构展示了@Prop嵌套场景的数据结构。
+
+```typescript
+@Entry
+@Component
+struct Person {
+  @State person: Father = new Father('Hello', new Son('world'));
+
+  build() {
+    Column() {
+      Flex({ direction: FlexDirection.Column, alignItems: ItemAlign.Center }) {
+        Button('change Father name')
+          .width(312)
+          .height(40)
+          .margin(12)
+          .fontColor('#FFFFFF')
+          .onClick(() => {
+            this.person.name = 'Hi';
+          })
+        Button('change Son title')
+          .width(312)
+          .height(40)
+          .margin(12)
+          .fontColor('#FFFFFF')
+          .onClick(() => {
+            this.person.son.title = 'ArkUI';
+          })
+        Text(this.person.name)
+          .fontSize(16)
+          .margin(12)
+          .width(312)
+          .height(40)
+          .backgroundColor('#ededed')
+          .borderRadius(20)
+          .textAlign(TextAlign.Center)
+          .fontColor('#e6000000')
+          .onClick(() => {
+            this.person.name = 'Bye';
+          })
+        Text(this.person.son.title)
+          .fontSize(16)
+          .margin(12)
+          .width(312)
+          .height(40)
+          .backgroundColor('#ededed')
+          .borderRadius(20)
+          .textAlign(TextAlign.Center)
+          .onClick(() => {
+            this.person.son.title = 'openHarmony';
+          })
+        Child({ child: this.person.son })
+      }
+    }
+  }
+}
+
+
+@Component
+struct Child {
+  @Prop child: Son = new Son('');
+
+  build() {
+    Column() {
+      Text(this.child.title)
+        .fontSize(16)
+        .margin(12)
+        .width(312)
+        .height(40)
+        .backgroundColor('#ededed')
+        .borderRadius(20)
+        .textAlign(TextAlign.Center)
+        .onClick(() => {
+          this.child.title = 'Bye Bye';
+        })
+    }
+  }
+}
+```
+
+**使用a.b(this.object)形式调用，不会触发UI刷新**
+
+在build方法内，当@Prop装饰的变量是Object类型、且通过a.b(this.object)形式调用时，b方法内传入的是this.object的原始对象，修改其属性，无法触发UI刷新。如下例中，通过静态方法Score.changeScore1或者this.changeScore2修改自定义组件Child中的this.score.value时，UI不会刷新。
+
+```typescript
+class Score {
+  value: number;
+  constructor(value: number) {
+    this.value = value;
+  }
+
+  static changeScore1(param1:Score) {
+    param1.value += 1;
+  }
+}
+
+@Entry
+@Component
+struct Parent {
+  @State score: Score = new Score(1);
+
+  build() {
+    Column({space:8}) {
+      Text(`The value in Parent is ${this.score.value}.`)
+        .fontSize(30)
+        .fontColor(Color.Red)
+      Child({ score: this.score })
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+
+@Component
+struct Child {
+  @Prop score: Score;
+
+  changeScore2(param2:Score) {
+    param2.value += 2;
+  }
+
+  build() {
+    Column({space:8}) {
+      Text(`The value in Child is ${this.score.value}.`)
+        .fontSize(30)
+      Button(`changeScore1`)
+        .onClick(()=>{
+          // 通过静态方法调用，无法触发UI刷新
+          Score.changeScore1(this.score);
+        })
+      Button(`changeScore2`)
+        .onClick(()=>{
+          // 使用this通过自定义组件内部方法调用，无法触发UI刷新
+          this.changeScore2(this.score);
+        })
+    }
+  }
+}
+```
+
+正例
+
+```typescript
+class Score {
+  value: number;
+  constructor(value: number) {
+    this.value = value;
+  }
+
+  static changeScore1(score:Score) {
+    score.value += 1;
+  }
+}
+
+@Entry
+@Component
+struct Parent {
+  @State score: Score = new Score(1);
+
+  build() {
+    Column({space:8}) {
+      Text(`The value in Parent is ${this.score.value}.`)
+        .fontSize(30)
+        .fontColor(Color.Red)
+      Child({ score: this.score })
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+
+@Component
+struct Child {
+  @Prop score: Score;
+
+  changeScore2(score:Score) {
+    score.value += 2;
+  }
+
+  build() {
+    Column({space:8}) {
+      Text(`The value in Child is ${this.score.value}.`)
+        .fontSize(30)
+      Button(`changeScore1`)
+        .onClick(()=>{
+          // 通过赋值添加 Proxy 代理
+          let score1 = this.score;
+          Score.changeScore1(score1);
+        })
+      Button(`changeScore2`)
+        .onClick(()=>{
+          // 通过赋值添加 Proxy 代理
+          let score2 = this.score;
+          this.changeScore2(score2);
+        })
+    }
+  }
+}
+```
+
+###### @Link装饰器：父子双向同步
+
+> **@Link装饰的变量与其父组件中的数据源共享相同的值。**
+
+允许的类型：Object、class、string、number、boolean、enum类型，以及这些类型的数组。Map, Set, Date
+
+> [!Warning]
+>
+> 1. @Link的数据源必须是**装饰器装饰的状态变量**
+> 2. @Link装饰器不建议在@Entry装饰的自定义组件中使用，否则编译时会抛出警告；若该自定义组件作为页面根节点使用，则会抛出运行时错误。
+> 3. @Link装饰的变量禁止本地初始化，否则编译期会报错。
+> 4. @Link装饰的变量的类型要和数据源类型保持一致，否则框架会抛出运行时错误。
+> 5. @Link装饰的变量仅能被状态变量初始化，不能使用常规变量初始化，否则编译期会给出告警，并在运行时崩溃。
+> 6. @Link不支持装饰Function类型的变量，框架会抛出运行时错误。
+
+**使用双向同步机制更改本地其他变量**
+
+```typescript
+//以下示例中，在@Link的@Watch里面修改了一个@State装饰的变量memberMessage，实现父子组件间的变量同步。但是@State装饰的变量memberMessage在本地修改不会影响到父组件中的变量改变。
+@Entry
+@Component
+struct Parent {
+  @State sourceNumber: number = 0;
+
+  build() {
+    Column() {
+      Text(`父组件的sourceNumber：` + this.sourceNumber)
+      Child({ sourceNumber: this.sourceNumber })
+      Button('父组件更改sourceNumber')
+        .onClick(() => {
+          this.sourceNumber++;
+        })
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+
+@Component
+struct Child {
+  @State memberMessage: string = 'Hello World';
+  @Link @Watch('onSourceChange') sourceNumber: number;
+
+  onSourceChange() {
+    this.memberMessage = this.sourceNumber.toString();
+  }
+
+  build() {
+    Column() {
+      Text(this.memberMessage)
+      Text(`子组件的sourceNumber：` + this.sourceNumber.toString())
+      Button('子组件更改memberMessage')
+        .onClick(() => {
+          this.memberMessage = 'Hello memberMessage';
+        })
+    }
+  }
+}
+```
+
+**Link支持联合类型实例**
+
+@Link支持联合类型、undefined和null
+
+```typescript
+//name类型为string | undefined。点击父组件Index中的按钮可以改变name的属性或类型，Child组件也会相应刷新。
+@Component
+struct Child {
+  @Link name: string | undefined;
+
+  build() {
+    Column() {
+
+      Button('Child change name to Bob')
+        .onClick(() => {
+          this.name = 'Bob';
+        })
+
+      Button('Child change name to undefined')
+        .onClick(() => {
+          this.name = undefined;
+        })
+
+    }.width('100%')
+  }
+}
+
+@Entry
+@Component
+struct Index {
+  @State name: string | undefined = 'mary';
+
+  build() {
+    Column() {
+      Text(`The name is  ${this.name}`).fontSize(30)
+
+      Child({ name: this.name })
+
+      Button('Parents change name to Peter')
+        .onClick(() => {
+          this.name = 'Peter';
+        })
+
+      Button('Parents change name to undefined')
+        .onClick(() => {
+          this.name = undefined;
+        })
+    }
+  }
+}
+```
+
+**使用a.b(this.object)形式调用，不会触发UI刷新**(同@Prop)
+
+###### @Provide装饰器和@Consume装饰器：与后代组件双向同步
+
+> @Provide和@Consume，应用于与后代组件的双向数据同步、状态数据在多个层级之间传递的场景。不同于上文提到的父子组件之间通过命名参数机制传递，@Provide和@Consume摆脱参数传递机制的束缚，实现跨层级传递。
+>
+> 其中@Provide装饰的变量是在祖先组件中，可以理解为被“提供”给后代的状态变量。@Consume装饰的变量是在后代组件中，去“消费（绑定）”祖先组件提供的变量。
+>
+> @Provide/@Consume是跨组件层级的双向同步
+
+@Provide/@Consume装饰的状态变量有以下特性：
+
+- @Provide装饰的状态变量自动对其所有后代组件可用，开发者不需要多次在组件之间传递变量。
+- 后代通过使用@Consume去获取@Provide提供的变量，建立在@Provide和@Consume之间的双向数据同步，与@State/@Link不同的是，前者可以更便捷的在多层级父子组件之间传递。
+- @Provide和@Consume通过变量名或者变量别名绑定，需要类型相同，否则会发生类型隐式转换，从而导致应用行为异常。
+
+```typescript
+// 通过相同的变量名绑定
+@Provide age: number = 0;
+@Consume age: number;
+
+// 通过相同的变量别名绑定
+@Provide('a') id: number = 0;
+@Consume('a') age: number;
+
+// 通过Provide的变量别名和Consume的变量名相同绑定
+@Provide('a') id: number = 0;
+@Consume a: number;
+
+// 通过Provide的变量名和Consume的变量别名绑定
+@Provide id: number = 0;
+@Consume('id') a: number;
+
+//当@Provide指定变量别名时，会同时保存变量名与变量别名，@Consume在查找时，会优先以变量别名作为查找值去匹配，如果没有别名则用变量名作为查找值，只要@Consume提供的查找值与@Provide保存的变量名或别名中任意一项一致，即可成功建立绑定关系。
+```
+
+允许的类型：Object、class、string、number、boolean、enum类型，以及这些类型的数组。Map, Set, Date
+
+> [!Warning]
+>
+> 1. @Provide/@Consume的参数key必须为string类型，否则编译期会报错。
+>
+>    ```typescript
+>    // 错误写法，编译报错
+>    let change: number = 10;
+>    @Provide(change) message: string = 'Hello';
+>    
+>    // 正确写法
+>    let change: string = 'change';
+>    @Provide(change) message: string = 'Hello';
+>    ```
+>
+> 2. @Consume装饰的变量不能在构造参数中传入初始化，否则编译期会报错。@Consume仅能通过key来匹配对应的@Provide变量或者从API version 20开始设置默认值进行初始化。
+>
+> 3. @Provide的key重复定义时，框架会抛出运行时错误，提醒开发者重复定义key，
+>
+> 4. @Provide与@Consume不支持装饰Function类型的变量，框架会抛出运行时错误。
+>
+> 5. 在非BuilderNode场景中，建议配对的@Provide/@Consume类型一致。虽然在运行时不会有强校验，但在@Consume装饰的变量初始化时，会隐式转换成@Provide装饰变量的类型。

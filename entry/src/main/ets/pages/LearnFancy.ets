@@ -44,7 +44,7 @@ export struct WrappedBuilderComponent {
   @State textWidth: number = 80;
   @State switch: boolean = true;
 
-  @State info: Info = new Info('北京');
+  @Prop info: Info = new Info('北京');
   @State user: User = new User();
 
   @State vm: PlayDetailViewModel = new PlayDetailViewModel();
