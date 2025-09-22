@@ -1916,3 +1916,57 @@ struct Index {
 > 4. @Provide与@Consume不支持装饰Function类型的变量，框架会抛出运行时错误。
 >
 > 5. 在非BuilderNode场景中，建议配对的@Provide/@Consume类型一致。虽然在运行时不会有强校验，但在@Consume装饰的变量初始化时，会隐式转换成@Provide装饰变量的类型。
+
+###### @Observed装饰器和@ObjectLink
+
+> 实现对嵌套数据结构中深层属性变化的观察
+
+> [!Warning]
+>
+> 1. @ObjectLink的属性可以被改变，但不允许整体赋值，即@ObjectLink装饰的变量是只读的。
+>
+>    ```typescript
+>    // 允许@ObjectLink装饰的数据属性赋值
+>    this.objLink.a= ...
+>    // 不允许@ObjectLink装饰的数据自身赋值
+>    this.objLink= ...
+>    ```
+>
+> 2. @Observed装饰的类，如果其属性为非简单类型，比如class、Object或者数组，那么这些属性也需要被@Observed装饰，否则将观察不到这些属性的变化。
+>
+> 3. @ObjectLink：@ObjectLink只能接收被@Observed装饰class的实例，推荐设计单独的自定义组件来渲染每一个数组或对象。
+>
+> 4. @ObjectLink装饰器不能在@Entry装饰的自定义组件中使用。
+>
+> 5. @ObjectLink装饰的类型必须是复杂类型，否则会有编译期报错。
+>
+>    ```typescript
+>    @Observed
+>    class Info {
+>      count: number;
+>    
+>      constructor(count: number) {
+>        this.count = count;
+>      }
+>    }
+>    
+>    class Test {
+>      msg: number;
+>    
+>      constructor(msg: number) {
+>        this.msg = msg;
+>      }
+>    }
+>    
+>    // 错误写法，count未指定类型，编译报错
+>    @ObjectLink count;
+>    // 错误写法，Test未被@Observed装饰，编译报错
+>    @ObjectLink test: Test;
+>    
+>    // 正确写法
+>    @ObjectLink count: Info;
+>    ```
+>
+> 6. 
+>
+> 
