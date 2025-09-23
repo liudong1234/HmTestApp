@@ -1944,29 +1944,134 @@ struct Index {
 >    @Observed
 >    class Info {
 >      count: number;
->    
+>       
 >      constructor(count: number) {
 >        this.count = count;
 >      }
 >    }
->    
+>       
 >    class Test {
 >      msg: number;
->    
+>       
 >      constructor(msg: number) {
 >        this.msg = msg;
 >      }
 >    }
->    
+>       
 >    // 错误写法，count未指定类型，编译报错
 >    @ObjectLink count;
 >    // 错误写法，Test未被@Observed装饰，编译报错
 >    @ObjectLink test: Test;
->    
+>       
 >    // 正确写法
 >    @ObjectLink count: Info;
 >    ```
 >
-> 6. 
+
+##### 管理应用拥有的状态管理应用拥有的状态
+
+###### LocalStorage：页面级UI状态存储
+
+LocalStorage根据与@Component装饰的组件的同步类型不同，提供了两个装饰器：
+
+- @LocalStorageProp：@LocalStorageProp装饰的变量与LocalStorage中给定属性建立单向同步关系。
+  ![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204451.21920139026752041556876031936113:50001231000000:2800:40502FFCDFCE7C1237C08852D7499FC52BE102A1CC974EE4E7C48A97D1D6ABBD.png)
+- @LocalStorageLink：@LocalStorageLink装饰的变量与LocalStorage中给定属性建立双向同步关系。
+  ![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204451.32056782783863968129497941309382:50001231000000:2800:F7941CE86504FA52A4C4D876FF8531FBEC0DC36581F27C19BDCD1274E8069576.png)
+
+> [!Warning]
 >
-> 
+> 1. @LocalStorageProp/@LocalStorageLink的参数必须为string类型，否则编译期会报错。
+>
+>    ```typescript
+>    let storage = new LocalStorage();
+>    storage.setOrCreate('PropA', 48);
+>    
+>    // 错误写法，编译报错
+>    @LocalStorageProp() localStorageProp: number = 1;
+>    @LocalStorageLink() localStorageLink: number = 2;
+>    
+>    // 正确写法
+>    @LocalStorageProp('PropA') localStorageProp: number = 1;
+>    @LocalStorageLink('PropA') localStorageLink: number = 2;
+>    ```
+>
+> 2. @LocalStorageProp与@LocalStorageLink不支持装饰Function类型的变量，框架会抛出运行时错误。
+>
+> 3. LocalStorage创建后，命名属性的类型不可更改。后续调用Set时必须使用相同类型的值。
+
+###### AppStorage：应用全局的UI状态存储
+
+1. @StorageProp(key)装饰的数值发生变化，不会同步写回AppStorage对应的属性；变化会触发自定义组件重新渲染，并且该变动仅作用于当前组件的私有成员变量，其他绑定该key的数据不会同步改变。
+2. 当AppStorage中对应key的属性发生改变时，所有@StorageProp(key)装饰的变量都会同步更新，本地的修改将被覆盖。
+
+![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204453.77041490241472246078597498538851:50001231000000:2800:C895A67CBA810CF93C14B29F0126E02E29DE56F28C1E290AEBE00B658DDDD88B.png)
+
+> [!Warning]
+>
+> 1. @StorageProp/@StorageLink的参数必须为string类型，否则编译期会报错。
+> 2. @StorageProp与@StorageLink不支持装饰Function类型的变量，框架会抛出运行时错误。
+> 3. AppStorage与PersistentStorage以及Environment配合使用时，需要注意以下几点：
+>    - 在AppStorage中创建属性后，调用PersistentStorage.persistProp接口时，会使用AppStorage中已存在的值，并覆盖PersistentStorage中的同名属性。因此，建议使用相反的调用顺序。反例可见在PersistentStorage之前访问AppStorage中的属性。
+>    - 如果在AppStorage中已创建属性，再调用Environment.envProp创建同名属性，会调用失败。因为AppStorage已有同名属性，Environment环境变量不会再写入AppStorage中，所以建议不要在AppStorage中使用Environment预置环境变量名。
+> 4. 状态装饰器装饰的变量，改变会引起UI的渲染更新。如果改变的变量仅用于消息传递，不用于UI更新，推荐使用emitter方式。具体示例可见不建议借助@StorageLink的双向同步机制实现事件通知。
+> 5. AppStorage同一进程内共享，UIAbility和UIExtensionAbility是两个进程，所以在UIExtensionAbility中不共享主进程的AppStorage。
+
+###### PersistentStorage：持久化存储UI状态
+
+PersistentStorage将选定的AppStorage属性保留在设备磁盘上。
+
+###### Environment：设备环境查询
+
+Environment提供了读取系统环境变量并将其值写入AppStorage的功能。开发者需要通过AppStorage获取环境变量的值
+
+##### 其他状态管理
+
+###### @Watch装饰器：状态变量更改通知
+
+@Watch应用于对状态变量的监听。如果开发者需要关注某个状态变量的值是否改变，可以使用@Watch为状态变量设置回调函数。
+
+@Watch提供了状态变量的监听能力，@Watch仅能监听到可以观察到的变化。
+
+- 建议开发者避免无限循环。循环可能是因为在@Watch的回调方法里直接或者间接地修改了同一个状态变量引起的。为了避免循环的产生，建议不要在@Watch的回调方法里修改当前装饰的状态变量；
+- 开发者应关注性能，属性值更新函数会延迟组件的重新渲染（具体请见上面的行为表现），因此，回调函数应仅执行快速运算；
+- 不建议在@Watch函数中调用async await，因为@Watch设计的用途是为了快速的计算，异步行为可能会导致重新渲染速度的性能问题。
+- @Watch参数为必选，且参数类型必须是string，否则编译期会报错。不建议开发者传入undefined，传入后编译不会报错，相当于传入“undefined”。
+
+```typescript
+// 错误写法，编译报错
+@State @Watch() num: number = 10;
+@State @Watch(change) num: number = 10;
+
+// 正确写法
+@State @Watch('change') num: number = 10;
+change() {
+  console.info(`xxx`);
+}
+```
+
+###### $$语法：系统组件双向同步
+
+$$运算符为系统组件提供TS变量的引用，使得TS变量和系统组件的内部状态保持同步。
+
+###### @Track装饰器：class对象属性级更新
+
+@Track应用于class对象的属性级更新。@Track装饰的属性变化时，只会触发该属性关联的UI更新。
+
+###### 自定义组件冻结功能
+
+**略**
+
+##### MVVM模式
+
+- View：用户界面层。负责用户界面展示并与用户交互，不包含任何业务逻辑。它通过绑定ViewModel层提供的数据实现动态更新。
+
+- Model：数据访问层。以数据为中心，不直接与用户界面交互。负责数据结构定义，数据管理（获取、存储、更新等），以及业务逻辑处理。
+
+- ViewModel：表示逻辑层。作为连接Model和View的桥梁，通常一个View对应一个ViewModel。View和ViewModel有两种通信方式：
+
+  1.方法调用：View通过事件监听用户行为，在回调里面触发ViewModel层的方法。例如当View监听到用户Button点击行为，调用ViewModel对应的方法，处理用户操作。
+
+  2.双向绑定：View绑定ViewModel的数据，实现双向同步。
+
+![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204421.80111038084915544170487908222959:50001231000000:2800:8121F84A5C7CEDF135E9EC57B41EE0187D7904FC5EB184FEC2508F162AB04A2B.png)
