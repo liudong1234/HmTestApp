@@ -2074,4 +2074,144 @@ $$运算符为系统组件提供TS变量的引用，使得TS变量和系统组�
 
   2.双向绑定：View绑定ViewModel的数据，实现双向同步。
 
+
+
 ![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204421.80111038084915544170487908222959:50001231000000:2800:8121F84A5C7CEDF135E9EC57B41EE0187D7904FC5EB184FEC2508F162AB04A2B.png)
+
+#### 状态管理(V2)
+
+##### V2所属装饰器
+
+###### @ObservedV2装饰器和@Trace装饰器：类属性变化观测
+
+- @ObservedV2装饰器与@Trace装饰器需要配合使用，单独使用@ObservedV2装饰器或@Trace装饰器没有任何作用。
+- 被@Trace装饰器装饰的属性property变化时，仅会通知property关联的组件进行刷新。
+- 在嵌套类中，嵌套类中的属性property被@Trace装饰且嵌套类被@ObservedV2装饰时，才具有触发UI刷新的能力。
+- 在继承类中，父类或子类中的属性property被@Trace装饰且该property所在类被@ObservedV2装饰时，才具有触发UI刷新的能力。
+- 未被@Trace装饰的属性用在UI中无法感知到变化，也无法触发UI刷新。
+- @ObservedV2的类实例目前不支持使用JSON.stringify进行序列化。
+- 使用@ObservedV2与@Trace装饰器的类，需通过new操作符实例化后，才具备被观测变化的能力。
+
+###### @ComponentV2装饰器：自定义组件
+
+- 在@ComponentV2装饰的自定义组件中，开发者仅可以使用全新的状态变量装饰器，包括@Local、@Param、@Once、@Event、@Provider、@Consumer等。
+- @ComponentV2装饰的自定义组件暂不支持LocalStorage等现有自定义组件的能力。
+- 无法同时使用@ComponentV2与@Component装饰同一个struct结构。
+- @ComponentV2支持一个可选的boolean类型参数freezeWhenInactive，来实现组件冻结功能。
+
+###### @Local装饰器：组件内部状态
+
+- 被@Local装饰的变量无法从外部初始化，因此必须在组件内部进行初始化。
+- 当被@Local装饰的变量变化时，会刷新使用该变量的组件。
+- @Local支持观测number、boolean、string、Object、class等基本类型以及Array,Set,Map,Date等内嵌类型。
+- @Local的观测能力仅限于被装饰的变量本身。当装饰简单类型时，能够观测到对变量的赋值；当装饰对象类型时，仅能观测到对对象整体的赋值；当装饰数组类型时，能观测到数组整体以及数组元素项的变化；当装饰Array、Set、Map、Date等内嵌类型时，可以观测到通过API调用带来的变化。
+- @Local支持null、undefined以及联合类型。
+
+###### @Param：组件外部输入
+
+@Param不仅可以接受组件外部输入，还可以接受@Local的同步变化。
+
+- @Param装饰的变量支持本地初始化，但不允许在组件内部直接修改。
+- 被@Param装饰的变量能够在初始化自定义组件时从外部传入，当数据源也是状态变量时，数据源的修改会同步给@Param。
+- @Param可以接受任意类型的数据源，包括普通变量、状态变量、常量、函数返回值等。
+- @Param装饰的变量变化时，会刷新该变量关联的组件。
+- @Param支持对基本类型（如number、boolean、string、Object、class）、内嵌类型（如Array,Set,Map,Date），以及null、undefined和联合类型进行观测。
+- 对于复杂类型如类对象，@Param会接受数据源的引用。在组件内可以修改类对象中的属性，该修改会同步到数据源。
+- @Param的观测能力仅限于被装饰的变量本身
+
+###### @Once：初始化同步一次
+
+@Once装饰器在变量初始化时接受外部传入值进行初始化，后续数据源更改不会同步给子组件：
+
+- @Once必须搭配@Param使用，单独使用或搭配其他装饰器使用都是不允许的。
+  @Once仅在[@ComponentV2](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-new-componentv2)装饰的自定义组件中与@Param搭配使用。
+
+  ```typescript
+  @ComponentV2
+  struct MyComponent {
+    @Param @Once onceParam: string = 'onceParam'; // 正确用法
+    @Once onceStr: string = 'Once'; // 错误用法，@Once无法单独使用
+    @Local @Once onceLocal: string = 'onceLocal'; // 错误用法，@Once不能与@Local一起使用
+  }
+  @Component
+  struct Index {
+    @Once @Param onceParam: string = 'onceParam'; // 错误用法
+  }
+  ```
+
+- @Once不影响@Param的观测能力，仅针对数据源的变化做拦截。
+- @Once与@Param装饰变量的先后顺序不影响使用功能。
+- @Once与@Param搭配使用时，可以在本地修改@Param变量的值。
+
+###### @Event装饰器：规范组件输出
+
+@Event主要配合@Param实现数据的双向同步。
+
+由于@Param装饰的变量在本地无法更改，使用@Event装饰器装饰回调方法并调用，可以实现更新数据源的变量，再通过[@Local](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-new-local)的同步机制，将修改同步回@Param装饰的变量，以此达到主动更新@Param装饰变量的效果。
+
+@Event用于装饰组件对外输出的方法：
+
+- @Event装饰的回调方法中参数以及返回值由开发者决定。
+
+- @Event装饰非回调类型的变量不会生效。当@Event没有初始化时，会自动生成一个空的函数作为默认回调。
+
+  ```typescript
+  @ComponentV2
+  struct Index {
+    @Event changeFactory: () => void = () => {}; //正确用法
+    @Event message: string = 'abcd'; // 错误用法，装饰非函数类型变量，@Event无作用
+  }
+  @Component
+  struct Index {
+    @Event changeFactory: () => void = () => {}; // 错误用法，编译时报错
+  }
+  ```
+
+- 当@Event未被外部初始化，但本地有默认值时，会使用本地默认的函数进行处理。
+
+@Param标志着组件的输入，表明该变量受父组件影响，而@Event标志着组件的输出，可以通过该方法影响父组件。使用@Event装饰回调方法是一种规范，表明该回调作为自定义组件的输出。父组件需要判断是否提供对应方法用于子组件更改@Param变量的数据源。
+
+###### @Provider装饰器和@Consumer装饰器：跨组件层级双向同步
+
+@Provider和@Consumer用于跨组件层级数据双向同步，可以使得开发者不用拘泥于组件层级。
+
+@Provider，即数据提供方，其所有的子组件都可以通过@Consumer绑定相同的key来获取@Provider提供的数据。
+
+@Consumer，即数据消费方，可以通过绑定同样的key获取其最近父节点的@Provider的数据，当查找不到@Provider的数据时，使用本地默认值。图示如下。
+
+![img](https://alliance-communityfile-drcn.dbankcdn.com/FileServer/getFile/cmtyPub/011/111/111/0000000000011111111.20250922204459.37927724815629641544925929700646:50001231000000:2800:614FA5FB3DA54F1B695D59C26217DC5E120B0B60928AE74542E54096C0683821.png)
+
+@Provider和@Consumer装饰的数据类型需要一致。
+
+开发者在使用@Provider和@Consumer时要注意：
+
+- @Provider和@Consumer强依赖自定义组件层级，@Consumer会因为所在组件的父组件不同，而被初始化为不同的值。
+- @Provider和@Consumer相当于把组件粘合在一起了，从组件独立角度考虑，应减少使用@Provider和@Consumer。
+
+```typescript
+@ComponentV2
+struct Parent {
+  // 未定义aliasName, 使用属性名'str'作为aliasName
+  @Provider() str: string = 'hello';
+}
+
+@ComponentV2
+struct Child {
+  // 定义aliasName为'str'，使用aliasName去寻找
+  // 能够在Parent组件上找到, 使用@Provider的值'hello'
+  @Consumer('str') str: string = 'world';
+}
+```
+
+###### @Monitor装饰器：状态变量修改监听
+
+@Monitor装饰器用于监听状态变量修改，使得状态变量具有深度监听的能力：
+
+- @Monitor装饰器支持在@ComponentV2装饰的自定义组件中使用，未被状态变量装饰器@Local,@Param,@Provider，@Consumer装饰的变量无法被@Monitor监听到变化。
+- @Monitor装饰器支持在类中与@ObservedV2、@Trace配合使用，不允许在未被@ObservedV2装饰的类中使用@Monitor装饰器。未被@Trace装饰的属性无法被@Monitor监听到变化。
+- 当观测的属性变化时，@Monitor装饰器定义的回调方法将被调用。判断属性是否变化使用的是严格相等（===），当严格相等判断的结果是false（即不相等）的情况下，就会触发@Monitor的回调。当在一次事件中多次改变同一个属性时，将会使用初始值和最终值进行比较以判断是否变化。
+- 单个@Monitor装饰器能够同时监听多个属性的变化，当这些属性在一次事件中共同变化时，只会触发一次@Monitor的回调方法。
+- @Monitor装饰器具有深度监听的能力，能够监听嵌套类、多维数组、对象数组中指定项的变化。对于嵌套类、对象数组中成员属性变化的监听要求该类被@ObservedV2装饰且该属性被@Trace装饰。
+- 当@Monitor监听整个数组时，更改数组的某一项不会被监听到。无法监听内置类型（Array、Map、Date、Set）的API调用引起的变化。
+- 在继承类场景中，可以在父子组件中对同一个属性分别定义@Monitor进行监听，当属性变化时，父子组件中定义的@Monitor回调均会被调用。
+- 和@Watch装饰器类似，开发者需要自己定义回调函数，区别在于@Watch装饰器将函数名作为参数，而@Monitor直接装饰回调函数。
