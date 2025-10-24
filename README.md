@@ -1944,25 +1944,25 @@ struct Index {
 >    @Observed
 >    class Info {
 >      count: number;
->       
+>                            
 >      constructor(count: number) {
 >        this.count = count;
 >      }
 >    }
->       
+>                            
 >    class Test {
 >      msg: number;
->       
+>                            
 >      constructor(msg: number) {
 >        this.msg = msg;
 >      }
 >    }
->       
+>                            
 >    // 错误写法，count未指定类型，编译报错
 >    @ObjectLink count;
 >    // 错误写法，Test未被@Observed装饰，编译报错
 >    @ObjectLink test: Test;
->       
+>                            
 >    // 正确写法
 >    @ObjectLink count: Info;
 >    ```
@@ -2215,3 +2215,1113 @@ struct Child {
 - 当@Monitor监听整个数组时，更改数组的某一项不会被监听到。无法监听内置类型（Array、Map、Date、Set）的API调用引起的变化。
 - 在继承类场景中，可以在父子组件中对同一个属性分别定义@Monitor进行监听，当属性变化时，父子组件中定义的@Monitor回调均会被调用。
 - 和@Watch装饰器类似，开发者需要自己定义回调函数，区别在于@Watch装饰器将函数名作为参数，而@Monitor直接装饰回调函数。
+
+###### @Computed装饰器：计算属性
+
+当开发者使用相同的计算逻辑重复绑定在UI上时，为了防止重复计算，
+
+```typescript
+@Computed
+get sum() {
+  return this.count1 + this.count2 + this.count3;
+}
+Text(`${this.count1 + this.count2 + this.count3}`) // 计算this.count1 + this.count2 + this.count3
+Text(`${this.count1 + this.count2 + this.count3}`) // 重复计算this.count1 + this.count2 + this.count3
+Text(`${this.sum}`) // 读取@Computed sum的缓存值，节省上述重复计算
+Text(`${this.sum}`) // 读取@Computed sum的缓存值，节省上述重复计算
+```
+
+对于简单计算，不建议使用计算属性，因为计算属性本身也有开销。对于复杂的计算，@Computed能带来性能收益。
+
+只有被观察到的变化才会触发@Computed函数重新计算。
+
+@Computed可以初始化@Param(对象参数)。
+
+###### @Type装饰器：标记类属性的类型
+
+实现序列化类时不丢失属性的复杂类型
+
+@Type的目的是标记类属性，配合PersistenceV2使用
+
+```typescript
+import { PersistenceV2, Type } from '@kit.ArkUI';
+
+@ObservedV2
+class SampleChild {
+  @Trace childNumber: number = 1;
+}
+
+@ObservedV2
+class Sample {
+  // 对于复杂对象需要@Type修饰，确保反序列化成功，去掉@Type会反序列化值失败。
+  @Type(SampleChild)
+  // 对于没有初值的类属性，经过@Type修饰后，需要手动保存，否则持久化失败。
+  // 无法使用@Type修饰的类属性，必须要有初值才能持久化。
+  @Trace sampleChild?: SampleChild = undefined;
+}
+
+@Entry
+@ComponentV2
+struct TestCase {
+  @Local sample: Sample = PersistenceV2.connect(Sample, () => new Sample)!;
+
+  build() {
+    Column() {
+      Text('childNumber value:' + this.sample.sampleChild?.childNumber)
+        .onClick(() => {
+          this.sample.sampleChild = new SampleChild();
+          this.sample.sampleChild.childNumber = 2;
+          PersistenceV2.save(Sample);
+        })
+        .fontSize(30)
+    }
+  }
+}
+```
+
+###### @ReusableV2装饰器：组件复用
+
+为了降低反复创建销毁自定义组件带来的性能开销，开发者可以使用@ReusableV2装饰@ComponentV2装饰的自定义组件，达成组件复用的效果。
+
+> [!Warning]
+>
+> - @ReusableV2仅能装饰V2的自定义组件，即@ComponentV2装饰的自定义组件。并且仅能将@ReusableV2装饰的自定义组件作为V2自定义组件的子组件使用。
+> - @ReusableV2同样提供了aboutToRecycle和aboutToReuse的生命周期，在组件被回收时调用aboutToRecycle，在组件被复用时调用aboutToReuse，但与@Reusable不同的是，aboutToReuse没有入参。
+> - 在回收阶段，会递归地调用所有子组件的aboutToRecycle回调（即使子组件未被标记可复用）；在复用阶段，会递归地调用所有子组件的aboutToReuse回调（即使子组件未被标记可复用）。
+> - @ReusableV2装饰的自定义组件会在被回收期间保持冻结状态，即无法触发UI刷新、无法触发@Monitor回调，与freezeWhenInactive标记位不同的是，在解除冻结状态后，不会触发延后的刷新。
+> - @ReusableV2装饰的自定义组件会在复用时自动重置组件内状态变量的值、重新计算组件内@Computed以及与之相关的@Monitor。不建议开发者在aboutToRecycle中更改组件内状态变量，
+
+V2的复用组件当前不支持直接用于[Repeat](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ts-rendering-control-repeat)的template中，但是可以用在template中的V2自定义组件中。
+
+```typescript
+@Entry
+@ComponentV2
+struct Index {
+  @Local arr: number[] = [1, 2, 3, 4, 5];
+  build() {
+    Column() {
+      List() {
+        Repeat(this.arr)
+          .each(() => {})
+          .virtualScroll()
+          .templateId(() => 'a')
+          .template('a', (ri) => {
+            ListItem() {
+              Column() {
+                ReusableV2Component({ val: ri.item}) // 暂不支持，编译期报错
+                ReusableV2Builder(ri.item) // 暂不支持，运行时报错
+                NormalV2Component({ val: ri.item}) // 支持普通V2自定义组件下面包含V2复用组件              
+              }
+            }
+          })
+      }
+    }
+  }
+}
+@ComponentV2
+struct NormalV2Component {
+  @Require @Param val: number;
+  build() {
+    ReusableV2Component({ val: this.val })
+  }
+}
+@Builder
+function ReusableV2Builder(param: number) {
+  ReusableV2Component({ val: param })
+}
+@ReusableV2
+@ComponentV2
+struct ReusableV2Component {
+  @Require @Param val: number;
+  build() {
+    Column() {
+      Text(`val: ${this.val}`)
+    } 
+  }
+}
+```
+
+##### 其他状态
+
+###### AppStorageV2: 应用全局UI状态存储
+
+**使用限制**
+
+1、只支持class类型。
+
+2、需要配合UI使用（UI线程），不能在其他线程使用，如不支持@Sendable。
+
+3、不支持collections.Set、collections.Map等类型。
+
+4、不支持非built-in类型，如[PixelMap](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/arkts-apis-image-pixelmap)、NativePointer、[ArrayList](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/js-apis-arraylist)等Native类型。
+
+5、不支持存储基本类型，如string、number、boolean等。注意：不支持存储基本类型意味着connect接口传入的类型不能是基本类型，但connect传入的class中可以包含基本类型。
+
+**使用场景**
+
+```typescript
+import { AppStorageV2 } from '@kit.ArkUI';
+
+@ObservedV2
+class Message {
+  @Trace userID: number;
+  userName: string;
+
+  constructor(userID?: number, userName?: string) {
+    this.userID = userID ?? 1;
+    this.userName = userName ?? 'Jack';
+  }
+}
+
+@Entry
+@ComponentV2
+struct Index {
+  // 使用connect在AppStorageV2中创建一个key为Message的对象
+  // 修改connect的返回值即可同步回AppStorageV2
+  @Local message: Message = AppStorageV2.connect<Message>(Message, () => new Message())!;
+
+  build() {
+    Column() {
+      // 修改@Trace装饰的类属性，UI能同步刷新
+      Button(`Index userID: ${this.message.userID}`)
+        .onClick(() => {
+          this.message.userID += 1;
+        })
+      // 修改非@Trace装饰的类属性，UI不会同步刷新，但修改的类属性已同步回AppStorageV2
+      Button(`Index userName: ${this.message.userName}`)
+        .onClick(() => {
+          this.message.userName += 'suf';
+        })
+      // remove key Message, 会从AppStorageV2中删除key为Message的对象
+      // remove之后，修改父组件的userId，子组件能同步变化，因为remove只是从AppStorageV2删除，不会影响组件中已存在的数据
+      Button('remove key: Message')
+        .onClick(() => {
+          AppStorageV2.remove<Message>(Message);
+        })
+      // connect key Message, 会从AppStorageV2中添加key为Message的对象
+      // remove之后，重新添加，修改父子组件的userID，可以发现数据已经不同步，子组件重新connect之后，数据一致
+      Button('connect key: Message')
+        .onClick(() => {
+          this.message = AppStorageV2.connect<Message>(Message, () => new Message(5, 'Rose'))!;
+        })
+      Divider()
+      Child()
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+
+@ComponentV2
+struct Child {
+  // 使用connect在AppStorageV2中取出一个key为Message的对象，已在父组件中创建
+  @Local message: Message = AppStorageV2.connect<Message>(Message, () => new Message())!;
+  @Local name: string = this.message.userName;
+
+  build() {
+    Column() {
+      // 修改@Trace装饰的类属性，UI同步刷新，父组件能感知该变化
+      Button(`Child userID: ${this.message.userID}`)
+        .onClick(() => {
+          this.message.userID += 5;
+        })
+      // 修改父组件中的userName属性，点击name可以同步父组件的类属性修改
+      Button(`Child name: ${this.name}`)
+        .onClick(() => {
+          this.name = this.message.userName;
+        })
+      // remove key Message, 会从AppStorageV2中删除key为Message的对象
+      Button('remove key: Message')
+        .onClick(() => {
+          AppStorageV2.remove<Message>(Message);
+        })
+      // connect key Message, 会从AppStorageV2中添加key为Message的对象
+      Button('connect key: Message')
+        .onClick(() => {
+          this.message = AppStorageV2.connect<Message>(Message, () => new Message(10, 'Lucy'))!;
+        })
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
+```
+
+###### PersistenceV2: 持久化存储UI状态
+
+PersistenceV2是在应用UI启动时会被创建的单例。它的目的是提供应用状态数据的中心存储，这些状态数据在应用级别都是可访问的。数据通过唯一的键值字符串访问。不同于AppStorageV2，PersistenceV2还将最新数据存储在设备磁盘上（持久化）
+
+**使用场景**
+
+```typescript
+// EntryAbility.ets
+// 以下为代码片段，需要开发者自己在EntryAbility.ets中补全
+import { PersistenceV2 } from '@kit.ArkUI';
+
+// 在EntryAbility外部定义class
+@ObservedV2
+class Storage {
+  @Trace isPersist: boolean = false;
+}
+
+// 在onWindowStageCreate的loadContent回调中调用PersistenceV2
+onWindowStageCreate(windowStage: window.WindowStage): void {
+  windowStage.loadContent('pages/Index', (err) => {
+    if (err.code) {
+      return;
+    }
+    PersistenceV2.connect(Storage, () => new Storage());
+  });
+}
+```
+
+###### !!语法：双向绑定
+
+在状态管理V1中，推荐使用[$$](######$$语法：系统组件双向同步)实现系统组件的双向绑定。
+
+在状态管理V2中，推荐使用!!语法糖统一处理双向绑定。
+
+------
+
+## 渲染控制
+
+### if/else：条件渲染
+
+```typescript
+@Entry
+@Component
+struct MyComponent {
+  @State count: number = 0;
+
+  build() {
+    Column() {
+      Text(`count=${this.count}`)
+
+      if (this.count > 0) {
+        Text(`count is positive`)
+          .fontColor(Color.Green)
+      }
+
+      Button('increase count')
+        .onClick(() => {
+          this.count++;
+        })
+
+      Button('decrease count')
+        .onClick(() => {
+          this.count--;
+        })
+    }
+  }
+}
+```
+
+### ForEach：循环渲染
+
+ForEach接口基于数组循环渲染，需要与容器组件配合使用，且接口返回的组件应当是允许包含在ForEach父容器组件中的子组件。例如，ListItem组件要求ForEach的父容器组件必须为List组件。
+
+#### 拖拽排序
+
+在List组件下使用ForEach，并设置onMove事件，每次迭代生成一个ListItem时，可以使能拖拽排序。拖拽排序离手后，如果数据位置发生变化，将触发onMove事件，上报数据移动原始索引号和目标索引号。在onMove事件中，需要根据上报的起始索引号和目标索引号修改数据源。数据源修改前后，要保持每个数据的键值不变，只是顺序发生变化，才能保证落位动画正常执行。
+
+```typescript
+@Entry
+@Component
+struct ForEachSort {
+  @State arr: Array<string> = [];
+
+  build() {
+    Column() {
+      // 点击此按钮会触发ForEach重新渲染
+      Button('Add one item')
+        .onClick(() => {
+          this.arr.push('10');
+        })
+        .width(300)
+        .margin(10)
+
+      List() {
+        ForEach(this.arr, (item: string) => {
+          ListItem() {
+            Text(item.toString())
+              .fontSize(16)
+              .textAlign(TextAlign.Center)
+              .size({ height: 100, width: '100%' })
+          }.margin(10)
+          .borderRadius(10)
+          .backgroundColor('#FFFFFFFF')
+        }, (item: string) => item)
+          .onMove((from: number, to: number) => {
+            // 以下两行代码是为了确保拖拽后屏幕上组件的顺序与数组arr中每一项的顺序保持一致。
+            // 若注释以下两行，第一步拖拽排序，第二步在arr末尾插入一项，触发ForEach渲染，此时屏上组件的顺序会跟数组arr中每一项的顺序一致，而不是维持第一步拖拽后的顺序，意味着拖拽排序在ForEach渲染后失效了。
+            let tmp = this.arr.splice(from, 1);
+            this.arr.splice(to, 0, tmp[0]);
+          })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#FFDCDCDC')
+    }
+  }
+
+  aboutToAppear(): void {
+    for (let i = 0; i < 10; i++) {
+      this.arr.push(i.toString());
+    }
+  }
+}
+```
+
+#### 渲染性能降低
+
+```typescript
+@Entry
+@Component
+struct Parent {
+  @State simpleList: Array<string> = ['one', 'two', 'three'];
+
+  build() {
+    Column() {
+      Button() {
+        Text('在第1项后插入新项').fontSize(30)
+      }
+      .onClick(() => {
+        this.simpleList.splice(1, 0, 'new item');
+        console.info(`[onClick]: simpleList is [${this.simpleList.join(', ')}]`);
+      })
+
+      ForEach(this.simpleList, (item: string) => {
+        ChildItem({ item: item })
+      })
+    }
+    .justifyContent(FlexAlign.Center)
+    .width('100%')
+    .height('100%')
+    .backgroundColor(0xF1F3F5)
+  }
+}
+
+@Component
+struct ChildItem {
+  @Prop item: string;
+
+  aboutToAppear() {
+    console.info(`[aboutToAppear]: item is ${this.item}`);
+  }
+
+  build() {
+    Text(this.item)
+      .fontSize(50)
+  }
+}
+```
+
+尽管本例中界面渲染结果符合预期，但在每次向数组中间插入新数组项时，ForEach会为该数组项及其后面的所有数组项重新创建组件。当数据源数据量较大或组件结构复杂时，组件无法复用会导致性能下降。因此，不建议省略第三个参数KeyGenerator函数，也不建议在键值中使用数据项索引index。
+
+```typescript
+//正确渲染并保证效率的ForEach写法
+ForEach(this.simpleList, (item: string) => {
+  ChildItem({ item: item })
+}, (item: string) => item)  // 需要保证key唯一
+```
+
+### LazyForEach：数据懒加载
+
+LazyForEach为开发者提供了基于数据源渲染出一系列子组件的能力。具体而言，LazyForEach从数据源中按需迭代数据，并在每次迭代时创建相应组件。当在滚动容器中使用了LazyForEach，框架会根据滚动容器可视区域按需创建组件，当组件滑出可视区域外时，框架会销毁并回收组件以降低内存占用。
+
+### Repeat：可复用的循环渲染
+
+Repeat基于数组类型数据来进行循环渲染，一般与容器组件配合使用。
+
+Repeat根据容器组件的**有效加载范围**（屏幕可视区域+预加载区域）加载子组件。当容器滑动/数组改变时，Repeat会根据父容器组件的布局过程重新计算有效加载范围，并管理列表子组件节点的创建与销毁。
+
+> 说明
+>
+> Repeat与LazyForEach组件的区别：
+>
+> - Repeat直接监听状态变量的变化，而LazyForEach需要开发者实现IDataSource接口，手动管理子组件内容/索引的修改。
+> - Repeat还增强了节点复用能力，提高了长列表滑动和数据更新的渲染性能。
+> - Repeat增加了渲染模板（template）的能力，在同一个数组中，根据开发者自定义的模板类型（template type）渲染不同的子组件。
+
+## 设置组件导航和页面路由
+
+### 组件导航
+
+Navigation是路由导航的根视图容器，一般作为页面（@Entry）的根容器，包括单栏（Stack）、分栏（Split）和自适应（Auto）三种显示模式。
+
+#### 设置页面显示模式
+
+1. 自适应模式
+2. 单栏模式
+3. 分栏模式
+
+#### 设置标题栏模式
+
+1. Mini模式
+
+   ```typescript
+   Navigation() {
+     // ...
+   }
+   .titleMode(NavigationTitleMode.Mini)
+   ```
+
+2. Full模式
+
+   ```typescript
+   Navigation() {
+     // ...
+   }
+   .titleMode(NavigationTitleMode.Full)
+   ```
+
+#### 设置菜单栏
+
+菜单栏位于Navigation组件的右上角
+
+```typescript
+let TooTmp: NavigationMenuItem = {'value': "", 'icon': "resources/base/media/ic_public_highlights.svg", 'action': ()=> {}}
+Navigation() {
+  // ...
+}
+.menus([TooTmp,
+  TooTmp,
+  TooTmp])
+```
+
+#### 设置工具栏
+
+工具栏位于Navigation组件的底部
+
+```typescript
+let TooTmp: ToolbarItem = {'value': "func", 'icon': "./image/ic_public_highlights.svg", 'action': ()=> {}};
+let TooBar: ToolbarItem[] = [TooTmp,TooTmp,TooTmp];
+Navigation() {
+  // ...
+}
+.toolbarConfiguration(TooBar)
+```
+
+#### 路由操作
+
+##### 页面跳转
+
+NavPathStack通过Push相关的接口去实现页面跳转的功能
+
+1. 普通跳转 通过页面的name去跳转，并可以携带param
+
+   ```typescript
+   this.pageStack.pushPath({ name: "PageOne", param: "PageOne Param" });
+   this.pageStack.pushPathByName("PageOne", "PageOne Param");
+   ```
+
+2. 带返回回调的跳转，跳转时添加onPop回调，能在页面出栈时获取返回信息，并进行处理。
+
+   ```typescript
+   this.pageStack.pushPathByName('PageOne', "PageOne Param", (popInfo) => {
+     console.info('Pop page name is: ' + popInfo.info.name + ', result: ' + JSON.stringify(popInfo.result));
+   });
+   ```
+
+3. 带错误码的跳转，跳转结束会触发异步回调，返回错误码信息。
+
+   ```typescript
+   this.pageStack.pushDestination({name: "PageOne", param: "PageOne Param"})
+     .catch((error: BusinessError) => {
+       console.error(`Push destination failed, error code = ${error.code}, error.message = ${error.message}.`);
+     }).then(() => {
+       console.info('Push destination succeed.');
+     });
+   this.pageStack.pushDestinationByName("PageOne", "PageOne Param")
+     .catch((error: BusinessError) => {
+       console.error(`Push destination failed, error code = ${error.code}, error.message = ${error.message}.`);
+     }).then(() => {
+       console.info('Push destination succeed.');
+     });
+   ```
+
+##### 页面返回
+
+NavPathStack通过Pop相关接口去实现页面返回功能。
+
+```typescript
+// 返回到上一页
+this.pageStack.pop();
+// 返回到上一个PageOne页面
+this.pageStack.popToName("PageOne");
+// 返回到索引为1的页面
+this.pageStack.popToIndex(1);
+// 返回到根首页（清除栈中所有页面）
+this.pageStack.clear();
+```
+
+##### 页面替换
+
+NavPathStack通过Replace相关接口去实现页面替换功能。
+
+```typescript
+// 将栈顶页面替换为PageOne
+this.pageStack.replacePath({ name: "PageOne", param: "PageOne Param" });
+this.pageStack.replacePathByName("PageOne", "PageOne Param");
+// 带错误码的替换，跳转结束会触发异步回调，返回错误码信息
+this.pageStack.replaceDestination({name: "PageOne", param: "PageOne Param"})
+  .catch((error: BusinessError) => {
+    console.error(`Replace destination failed, error code = ${error.code}, error.message = ${error.message}.`);
+  }).then(() => {
+    console.info('Replace destination succeed.');
+  })
+```
+
+##### 页面删除
+
+NavPathStack通过Remove相关接口去实现删除路由栈中特定页面的功能。
+
+```typescript
+// 删除栈中name为PageOne的所有页面
+this.pageStack.removeByName("PageOne");
+// 删除指定索引的页面
+this.pageStack.removeByIndexes([1, 3, 5]);
+// 删除指定id的页面
+this.pageStack.removeByNavDestinationId("1");
+```
+
+##### 移动页面
+
+```typescript
+// 移动栈中name为PageOne的页面到栈顶
+this.pageStack.moveToTop("PageOne");
+// 移动栈中索引为1的页面到栈顶
+this.pageStack.moveIndexToTop(1);
+```
+
+##### 参数获取
+
+NavDestination子页第一次创建时会触发onReady回调，可以获取此页面对应的参数。
+
+```typescript
+@Component
+struct Page01 {
+  pathStack: NavPathStack | undefined = undefined;
+  pageParam: string = '';
+
+  build() {
+    NavDestination() {
+      // ...
+    }.title('Page01')
+    .onReady((context: NavDestinationContext) => {
+      this.pathStack = context.pathStack;
+      this.pageParam = context.pathInfo.param as string;
+    })
+  }
+}
+```
+
+NavDestination组件中可以通过设置onResult接口，接收返回时传递的路由参数。
+
+```typescript
+class NavParam {
+  desc: string = 'navigation-param'
+}
+
+@Component
+struct DemoNavDestination {
+  // ...
+  build() {
+    NavDestination() {
+      // ...
+    }
+    .onResult((param: Object) => {
+      if (param instanceof NavParam) {
+        console.info('TestTag', 'get NavParam, its desc: ' + (param as NavParam).desc);
+        return;
+      }
+      console.info('TestTag', 'param not instance of NavParam');
+    })
+  }
+}
+```
+
+其他业务场景，可以通过主动调用NavPathStack的Get相关接口去获取指定页面的参数。
+
+```typescript
+// 获取栈中所有页面name集合
+this.pageStack.getAllPathName();
+// 获取索引为1的页面参数
+this.pageStack.getParamByIndex(1);
+// 获取PageOne页面的参数
+this.pageStack.getParamByName("PageOne");
+// 获取PageOne页面的索引集合
+this.pageStack.getIndexByName("PageOne");
+```
+
+##### 路由拦截
+
+NavPathStack提供了[setInterception](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ts-basic-components-navigation#setinterception12)方法，用于设置Navigation页面跳转拦截回调。该方法需要传入一个NavigationInterception对象，该对象包含三个回调函数：
+
+| 名称       | 描述                                                 |
+| :--------- | :--------------------------------------------------- |
+| willShow   | 页面跳转前回调，允许操作栈，在当前跳转生效。         |
+| didShow    | 页面跳转后回调，在该回调中操作栈会在下一次跳转生效。 |
+| modeChange | Navigation单双栏显示状态发生变更时触发该回调。       |
+
+> [!Tip]
+>
+> 无论是哪个回调，在进入回调时路由栈都已经发生了变化。
+
+可以在willShow回调中通过修改路由栈来实现路由拦截重定向的能力。
+
+```typescript
+this.pageStack.setInterception({
+  willShow: (from: NavDestinationContext | "navBar", to: NavDestinationContext | "navBar",
+    operation: NavigationOperation, animated: boolean) => {
+    if (typeof to === "string") {
+      console.info("target page is navigation home page.");
+      return;
+    }
+    // 将跳转到PageTwo的路由重定向到PageOne
+    let target: NavDestinationContext = to as NavDestinationContext;
+    if (target.pathInfo.name === 'PageTwo') {
+      target.pathStack.pop();
+      target.pathStack.pushPathByName('PageOne', null);
+    }
+  }
+})
+```
+
+#### 子页面
+
+##### 页面显示类型
+
+- 标准类型
+
+  NavDestination组件默认为标准类型，此时mode属性为NavDestinationMode.STANDARD。标准类型的NavDestination的生命周期跟随其在NavPathStack路由栈中的位置变化而改变。
+
+- 弹窗类型
+
+  NavDestination设置mode为NavDestinationMode.DIALOG弹窗类型，此时整个NavDestination默认透明显示。弹窗类型的NavDestination显示和消失时不会影响下层标准类型的NavDestination的显示和生命周期，两者可以同时显示。
+
+  ```typescript
+  // Dialog NavDestination
+  @Entry
+  @Component
+   struct Index {
+     @Provide('NavPathStack') pageStack: NavPathStack = new NavPathStack();
+  
+     @Builder
+     PagesMap(name: string) {
+       if (name == 'DialogPage') {
+         DialogPage();
+       }
+     }
+  
+     build() {
+       Navigation(this.pageStack) {
+         Button('Push DialogPage')
+           .margin(20)
+           .width('80%')
+           .onClick(() => {
+             this.pageStack.pushPathByName('DialogPage', '');
+           })
+       }
+       .mode(NavigationMode.Stack)
+       .title('Main')
+       .navDestination(this.PagesMap)
+     }
+   }
+  
+   @Component
+   export struct DialogPage {
+     @Consume('NavPathStack') pageStack: NavPathStack;
+  
+     build() {
+       NavDestination() {
+         Stack({ alignContent: Alignment.Center }) {
+           Column() {
+             Text("Dialog NavDestination")
+               .fontSize(20)
+               .margin({ bottom: 100 })
+             Button("Close").onClick(() => {
+               this.pageStack.pop();
+             }).width('30%')
+           }
+           .justifyContent(FlexAlign.Center)
+           .backgroundColor(Color.White)
+           .borderRadius(10)
+           .height('30%')
+           .width('80%')
+         }.height("100%").width('100%')
+       }
+       .backgroundColor('rgba(0,0,0,0.5)')
+       .hideTitleBar(true)
+       .mode(NavDestinationMode.DIALOG)
+     }
+   }
+  ```
+
+##### 页面生命周期
+
+略
+
+##### 页面监听和查询
+
+###### 页面信息查询
+
+自定义组件提供queryNavDestinationInfo方法，可以在NavDestination内部查询到当前所属页面的信息，返回值为NavDestinationInfo，若查询不到则返回undefined。
+
+```typescript
+ import { uiObserver } from '@kit.ArkUI';
+
+ // NavDestination内的自定义组件
+ @Component
+ struct MyComponent {
+   navDesInfo: uiObserver.NavDestinationInfo | undefined;
+
+   aboutToAppear(): void {
+     this.navDesInfo = this.queryNavDestinationInfo();
+   }
+
+   build() {
+       Column() {
+         Text("所属页面Name: " + this.navDesInfo?.name)
+       }.width('100%').height('100%')
+   }
+ }
+```
+
+###### 页面状态监听
+
+通过observer.on('navDestinationUpdate')提供的注册接口可以注册NavDestination生命周期变化的监听，使用方式如下：
+
+```typescript
+uiObserver.on('navDestinationUpdate', (info) => {
+     console.info('NavDestination state update', JSON.stringify(info));
+ });
+```
+
+也可以注册页面切换的状态回调，能在页面发生路由切换的时候拿到对应的页面信息NavDestinationSwitchInfo，并且提供了UIAbilityContext和UIContext不同范围的监听：
+
+```typescript
+ // 在UIAbility中使用
+ import { UIContext, uiObserver } from '@kit.ArkUI';
+
+ // callbackFunc是开发者定义的监听回调函数
+ function callbackFunc(info: uiObserver.NavDestinationSwitchInfo) {}
+ uiObserver.on('navDestinationSwitch', this.context, callbackFunc);
+
+ // 可以通过窗口的getUIContext()方法获取对应的UIContent
+ uiContext: UIContext | null = null;
+ uiObserver.on('navDestinationSwitch', this.uiContext, callbackFunc);
+```
+
+#### 页面转场
+
+##### 关闭转场
+
+1. 全局关闭
+   Navigation通过NavPathStack中提供的disableAnimation方法可以在当前Navigation中关闭或打开所有转场动画。
+
+   ```typescript
+   pageStack: NavPathStack = new NavPathStack();
+   
+   aboutToAppear(): void {
+     this.pageStack.disableAnimation(true);
+   }
+   ```
+
+2. 单次关闭
+   NavPathStack中提供的Push、Pop、Replace等接口中可以设置animated参数，默认为true表示有转场动画，需要单次关闭转场动画可以置为false，不影响下次转场动画。
+
+   ```typescript
+   pageStack: NavPathStack = new NavPathStack();
+   
+   this.pageStack.pushPath({ name: "PageOne" }, false);
+   this.pageStack.pop(false);
+   ```
+
+##### 自定义转场
+
+略
+
+##### 共享元素转场
+
+NavDestination之间切换时可以通过geometryTransition实现共享元素转场。配置了共享元素转场的页面同时需要关闭系统默认的转场动画。
+
+1. 为需要实现共享元素转场的组件添加geometryTransition属性，id参数必须在两个NavDestination之间保持一致。
+
+   ```typescript
+   // 起始页配置共享元素id
+   NavDestination() {
+     Column() {
+       // ...
+       // $r('app.media.startIcon')需要替换为开发者所需的资源文件
+       Image($r('app.media.startIcon'))
+       .geometryTransition('sharedId')
+       .width(100)
+       .height(100)
+     }
+   }
+   .title('FromPage')
+   
+   // 目的页配置共享元素id
+   NavDestination() {
+     Column() {
+       // ...
+       // $r('app.media.startIcon')需要替换为开发者所需的资源文件
+       Image($r('app.media.startIcon'))
+       .geometryTransition('sharedId')
+       .width(200)
+       .height(200)
+     }
+   }
+   .title('ToPage')
+   ```
+
+2. 将页面路由的操作，放到animateTo动画闭包中，配置对应的动画参数以及关闭系统默认的转场。
+
+   ```typescript
+   NavDestination() {
+     Column() {
+       Button('跳转目的页')
+       .width('80%')
+       .height(40)
+       .margin(20)
+       .onClick(() => {
+           this.getUIContext()?.animateTo({ duration: 1000 }, () => {
+             this.pageStack.pushPath({ name: 'ToPage' }, false)
+           });
+       })
+     }
+   }
+   .title('FromPage')
+   ```
+
+#### 跨包路由
+
+系统提供**系统路由表**和**自定义路由表**两种实现方式。
+
+- 系统路由表相对自定义路由表，使用更简单，只需要添加对应页面跳转配置项，即可实现页面跳转。
+- 自定义路由表使用起来更复杂，但是可以根据应用业务进行定制处理。
+
+支持自定义路由表和系统路由表混用。
+
+##### 路由表能力对比
+
+不同路由方式适用于不同需求，易用性或可扩展性需根据项目特点权衡选择。
+
+| 路由方式                                                     | 跨包跳转能力                                 | 可扩展性       | 易用性                                 |
+| :----------------------------------------------------------- | :------------------------------------------- | :------------- | :------------------------------------- |
+| [系统路由表](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-navigation#系统路由表) | 跳转前无需import页面文件，页面按需动态加载。 | 可扩展性一般。 | 易用性更强，系统自动维护路由表。       |
+| [自定义路由表](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-navigation#自定义路由表) | 跳转前需要import页面文件。                   | 可扩展性更强。 | 易用性一般，需要开发者自行维护路由表。 |
+
+##### 系统路由表
+
+1. 在跳转目标模块的配置文件[module.json5](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/module-configuration-file)添加路由表配置：
+
+   ```typescript
+     {
+       "module" : {
+         "routerMap": "$profile:route_map"
+       }
+     }
+   ```
+
+2. 添加完路由配置文件地址后，需要在工程resources/base/profile中创建route_map.json文件。添加如下配置信息：
+
+   ```typescript
+     {
+       "routerMap": [
+         {
+           "name": "PageOne",
+           "pageSourceFile": "src/main/ets/pages/PageOne.ets",
+           "buildFunction": "PageOneBuilder",
+           "data": {
+             "description" : "this is PageOne"
+           }
+         }
+       ]
+     }
+   ```
+
+配置说明如下：
+
+| 配置项         | 说明                                                         |
+| :------------- | :----------------------------------------------------------- |
+| name           | 可自定义的跳转页面名称。                                     |
+| pageSourceFile | 跳转目标页在包内的路径，相对src目录的相对路径。              |
+| buildFunction  | 跳转目标页的入口函数名称，必须以@Builder修饰。               |
+| data           | 应用自定义字段。可以通过配置项读取接口getConfigInRouteMap获取。 |
+
+3. 在跳转目标页面中，需要配置入口Builder函数，函数名称需要和route_map.json配置文件中的buildFunction保持一致，否则在编译时会报错。
+
+   ```typescript
+     // 跳转页面入口函数
+     @Builder
+     export function PageOneBuilder() {
+       PageOne();
+     }
+   
+     @Component
+     struct PageOne {
+       pathStack: NavPathStack = new NavPathStack();
+   
+       build() {
+         NavDestination() {
+         }
+         .title('PageOne')
+         .onReady((context: NavDestinationContext) => {
+            this.pathStack = context.pathStack;
+         })
+       }
+     }
+   ```
+
+4. 通过pushPathByName等路由接口进行页面跳转。(注意：此时Navigation中可以不用配置navDestination属性。)
+
+   ```typescript
+     @Entry
+     @Component
+     struct Index {
+       pageStack : NavPathStack = new NavPathStack();
+   
+       build() {
+         Navigation(this.pageStack){
+         }.onAppear(() => {
+           this.pageStack.pushPathByName("PageOne", null, false);
+         })
+         .hideNavBar(true)
+       }
+     }
+   ```
+
+
+##### 自定义路由表
+
+自定义路由表通过给Navigation的[navDestination](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ts-basic-components-navigation#navdestination10)属性设置Builder函数实现，其特点是需要import页面。有两种import页面的方式，静态import和动态import，二者的区别在于：
+
+| import方式 | 模块间耦合度 | 实现复杂度 | 性能                                         |
+| :--------- | :----------- | :--------- | :------------------------------------------- |
+| 动态import | 模块间解耦。 | 复杂度高。 | 性能好，按需加载，跳转前再加载对应页面。     |
+| 静态import | 模块间耦合。 | 复杂度低。 | 性能一般，初始化时一次性加载所有依赖的页面。 |
+
+###### 动态import（推荐）
+
+动态import旨在解决多个模块（HAR/HSP）能够复用相同的业务逻辑，实现各业务模块间的解耦，同时支持路由功能的扩展与整合，可以按需import，具体实现方法请参考考[Navigation自定义动态路由](https://gitee.com/harmonyos-cases/cases/blob/master/CommonAppDevelopment/common/routermodule/README_AUTO_GENERATE.md)示例
+
+动态import的优势：
+
+- 路由定义除了跳转的URL以外，可以配置丰富的扩展信息，如横竖屏默认模式、是否需要鉴权等等，做路由跳转时统一处理。
+- 给每个路由页面设置一个名字，按照名称进行跳转而不是文件路径。
+- 页面的加载可以使用动态import（按需加载），防止首个页面加载大量代码导致卡顿。
+
+实现方案：
+
+1. 定义页面跳转配置项。
+   - 使用资源文件进行定义，通过资源管理@ohos.resourceManager在运行时对资源文件解析。
+   - 在ets文件中配置路由加载配置项，一般包括路由页面名称（即pushPath等接口中页面的别名），文件所在模块名称（hsp/har的模块名），加载页面在模块内的路径（相对src目录的路径）。
+2. 加载目标跳转页面，通过动态import将跳转目标页面所在的模块在运行时加载，在模块加载完成后，调用模块中的方法，通过import在模块的方法中加载模块中显示的目标页面，并返回页面加载完成后定义的Builder函数。
+3. 触发页面跳转，在Navigation的navDestination属性执行步骤2中加载的Builder函数，即可跳转到目标页面。
+
+###### 静态import
+
+静态import实现方式简单，但通过静态import页面进行路由跳转会导致不同模块之间的依赖耦合，并增加首页加载时间长等问题
+
+```typescript
+import { pageOneTmp } from './pageOne';
+
+@Entry
+@Component
+struct NavigationExample {
+  @Provide('pageInfos') pageInfos: NavPathStack = new NavPathStack()
+  private arr: number[] = [1, 2];
+
+  @Builder
+  pageMap(name: string) {
+    if (name === "NavDestinationTitle1") {
+      pageOneTmp();
+    } else if (name === "NavDestinationTitle2") {
+      pageTwoTmp();
+    }
+  }
+
+  build() {
+    Column() {
+      Navigation(this.pageInfos) {
+        TextInput({ placeholder: 'search...' })
+          .width("90%")
+          .height(40)
+
+        List({ space: 12 }) {
+          ForEach(this.arr, (item: number) => {
+            ListItem() {
+              Text("Page" + item)
+                .width("100%")
+                .height(72)
+                .borderRadius(24)
+                .fontSize(16)
+                .fontWeight(500)
+                .textAlign(TextAlign.Center)
+                .onClick(() => {
+                  this.pageInfos.pushPath({ name: "NavDestinationTitle" + item });
+                })
+            }
+          }, (item: number) => item.toString())
+        }
+        .width("90%")
+        .margin({ top: 12 })
+      }
+      .title("主标题")
+      .navDestination(this.pageMap)
+      .mode(NavigationMode.Split)
+    }
+    .height('100%')
+    .width('100%')
+  }
+}
+
+@Component
+export struct pageTwoTmp {
+  @Consume('pageInfos') pageInfos: NavPathStack;
+
+  build() {
+    NavDestination() {
+      Column() {
+        Text("NavDestinationContent2")
+      }.width('100%').height('100%')
+    }.title("NavDestinationTitle2")
+    .onBackPressed(() => {
+      const popDestinationInfo = this.pageInfos.pop(); // 弹出路由栈的栈顶元素
+      console.info('pop' + '返回值' + JSON.stringify(popDestinationInfo));
+      return true;
+    })
+  }
+}
+
+// pageOne.ets
+@Component
+export struct pageOneTmp {
+  @Consume('pageInfos') pageInfos: NavPathStack;
+
+  build() {
+    NavDestination() {
+      Column() {
+        Text("NavDestinationContent1")
+      }.width('100%').height('100%')
+    }.title("NavDestinationTitle1")
+    .onBackPressed(() => {
+      const popDestinationInfo = this.pageInfos.pop(); // 弹出路由栈的栈顶元素
+      console.info('pop' + '返回值' + JSON.stringify(popDestinationInfo));
+      return true;
+    })
+  }
+}
+```
+
+#### 页面路由
+
+##### 页面跳转
+
+Router模块提供了两种跳转模式，分别是pushUrl和replaceUrl。这两种模式决定了目标页面是否会替换当前页。
+
+- pushUrl：目标页面不会替换当前页，而是压入页面栈。这样可以保留当前页的状态，并且可以通过返回键或者调用back方法返回到当前页。
+- replaceUrl：目标页面会替换当前页，并销毁当前页。这样可以释放当前页的资源，并且无法返回到当前页。
+
